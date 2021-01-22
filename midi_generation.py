@@ -60,13 +60,13 @@ volume   = 100 # 0-127, as per the MIDI standard
 # version (3 or 8 note version)
 v = 8
 
-# 3 note POC on major scale
+# 8 note POC on major scale
 # i is the MIDI number of the first key, see https://www.researchgate.net/profile/Mickael_Tits/publication/283460243/figure/fig8/AS:614346480685058@1523483023512/88-notes-classical-keyboard-Note-names-and-MIDI-numbers.png
 count = 0
-for i in range(60, 96):
+for i in range(60, 96):  # i represents a note on the keyboard, 60 is middle C
     notes = [i]
     for j in range(0,v-1):
-        notes.append(notes[-1] + maj[j])
+        notes.append(notes[-1] + maj[j]) # Increment the last note by a tone or semitone based on the scale
     print(notes)
 
     MyMIDI = MIDIFile(1)  # One track, defaults to format 1 (tempo track # automatically created)
@@ -83,7 +83,7 @@ for i in range(60, 96):
     # Plays the file!
     play_file(str(v) + '_notes/' + file + ".mid")
     t.sleep(0.5) # Prevents an error
-    if (count > 5):
+    if (count > 0):
         break
     count += 1
 
