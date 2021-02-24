@@ -3,6 +3,8 @@ import glob
 import shutil
 import pandas as pd
 from mido import MidiFile
+from mido import bpm2tempo
+from mido import tempo2bpm 
 
 
 datadir = "/Users/sorensabet/Desktop/Master's Coursework/CSC2506_Project/Preprocessing/Raw Data" 
@@ -58,10 +60,6 @@ exceptions  = []
 
 for row in files_pd.iterrows():
     
-    # if (row[0] < 2000):
-    #     continue
-
-    
     print('%d: %s' % (row[0], row[1]['path']))
     
     try:
@@ -91,58 +89,38 @@ for row in files_pd.iterrows():
         track_text = None 
         track_len_seconds = None 
         track_msg_types = set()
+        track_bpm = None 
+        track_tempo = None
         
 
         # Message level information - Need this to populate some track level info         
         
         for msg_count, msg in enumerate(track): 
-            if msg.type == 'track_name':
-                track_name2 = msg.name
-            
-            
-            
-            # msg_time = msg.time 
-            # msg_channel = msg.channel
-            # msg_velocity = msg.velocity 
-            # msg_note = msg.note
-            
-            
-            # Okay. Now that I have all the message types, I need to know how to get the messages  
-            # if (msg.type == 'track_name'):
-            #     print(msg.is_meta)
-            #     print(msg.dict())
-            #     print(msg.is_realtime)
-            #     input('Batman')
-                
-                # So, I can append the dicts together and it will automatically get all params 
-                # 
-            
             try:            
-                msg_ismeta = msg.is_meta 
-                msg_type = msg.type
-                msg_isrealtime = msg.is_realtime
-            except Exception as ex:
-                print(ex)
-                print(msg)
-                input('Press enter to continue')
+                if msg.type == 'track_name':
+                    track_name2 = msg.name
                 
-            print(msg)
+                if msg.type == 'set_tempo':
+                    track_tempo = msg.tempo 
+                    track_bpm = tempo2bpm(msg.tempo)
             
-            msg_dict = {'song_hash': row[1]['song_hash'], 'track_num': track_count,
-                        'type': msg_type, 'is_realtime': msg_isrealtime, 
-                        'is_meta': msg_ismeta}
+                msg_dict = msg.dict()
+                msg_dict['song_hash'] = row[1]['song_hash']
+                msg_dict['track_num'] = track_count 
+                msg_dict['type'] = msg.type 
+                msg_dict['realtime'] = msg.realtime
+                msg_dict['meta'] = msg.is_meta 
+            except Exception as ex:
+                exceptions.append(ex)
             msg_res.append(msg_dict)
-            pass 
         
         track_dict = {'song_hash': row[1]['song_hash'], 'track_num': track_count, 
-                      'track_name1': track_name1, 'track_name2': track_name2, 
-                      
+                      'track_name1': track_name1, 'track_name2': track_name2,           
                       'track_num_msgs': track_nmsgs,
                       'track_text': track_text, 'track_length(s)': track_len_seconds}
         track_res.append(track_dict)
     
-    
-    if row[0] > 1000:
+    if row[0] > 100:
         break
     
 print('Song level exceptions')
