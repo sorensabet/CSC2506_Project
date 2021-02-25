@@ -21,8 +21,8 @@ temp = files_pd[0].str.split('\\', expand=True)
 temp.rename(columns={0: 'dataset', 1: 'subfolder', 2: 'filename'}, inplace=True)
 files_pd = files_pd.merge(temp, left_index=True, right_index=True, how='left')
 files_pd.rename(columns={0: 'path'}, inplace=True)
-files_pd['song_hash'] = pd.util.hash_pandas_object(files_pd['path'])
-
+files_pd.reset_index(drop=True, inplace=True)
+files_pd['song_idx'] = files_pd.index
 
 # Song level information that I want to track 
 #   Relative path ofthe song        (DONE)
@@ -75,7 +75,9 @@ temp_known_types = ignore_types.union(msg_keep_types).union(track_info_types)
 
 
 for row in files_pd.iterrows():    
-    if (row[0] > 10):
+    if (row[0] < 10):
+        continue 
+    if (row[0] > 15):
         break
    
     print('%d: %s' % (row[0], row[1]['path']))
@@ -87,7 +89,7 @@ for row in files_pd.iterrows():
         song_len = mid.length
         song_tpb = mid.ticks_per_beat
         song_charset = mid.charset 
-        song_dict = {'song_hash': row[1]['song_hash'], 'n_tracks': song_ntracks, 'MIDI_type': song_type,
+        song_dict = {'song_idx': row[0], 'n_tracks': song_ntracks, 'MIDI_type': song_type,
                   'length(s)': song_len, 'ticks_per_beat': song_tpb, 'charset': song_charset}
     except Exception as e:
         exceptions.append(e)
@@ -136,7 +138,7 @@ for row in files_pd.iterrows():
             msg_dict = {}
             msg_dict['count'] = msg_count
             msg_dict['type'] = msg.type
-            msg_dict['song_hash'] = row[1]['song_hash']
+            msg_dict['song_idx'] = row[0]
             msg_dict['track_num'] = track_count 
             # msg_dict['realtime'] = msg.is_realtime
             msg_dict['meta'] = msg.is_meta 
@@ -174,7 +176,7 @@ for row in files_pd.iterrows():
             track_new_msg_counter += 1
 
         
-        track_dict = {'song_hash': row[1]['song_hash'], 'track_num': track_count, 
+        track_dict = {'song_idx': row[0], 'song_name': row[1]['filename'],'track_num': track_count, 
                       'track_orig_num_msgs': track_orig_nmsgs, 'track_new_num_msgs': track_new_msg_counter,
                       'track_name': track_name, 
                       'track_tempo(s)': track_tempo, 'track_bpm(s)': track_bpm, 
@@ -198,7 +200,7 @@ song_df = pd.DataFrame.from_records(song_res)
 track_df = pd.DataFrame.from_records(track_res)
 msg_df = pd.DataFrame.from_records(msg_res)
 
-files_pd = files_pd.merge(song_df, left_on=['song_hash'], right_on=['song_hash'], how='left')
+files_pd = files_pd.merge(song_df, left_on=['song_idx'], right_on=['song_idx'], how='left')
 
 # Okay. Experiment. Copy 10 songs and write the new, reassembled versions to disk.
 # See if The MIDI files sound the same as before. 
@@ -208,11 +210,6 @@ if os.path.exists(exp_path):
     shutil.rmtree(exp_path)
 os.mkdir(exp_path)
 
-def make_message(params):
-    msg_type = msg[1]['type']
-    msg_time = int(msg[1]['time'])
-
-
 def convert_to_midi(t_df, m_df):
     """
         t_df: Track dataframe
@@ -220,9 +217,11 @@ def convert_to_midi(t_df, m_df):
     """
     
     mid = MidiFile()
+    
     for track in t_df.iterrows():
         curr_track = MidiTrack()
         msgs = m_df.loc[m_df['track_num'] == track[1]['track_num']]
+        
         for msg in msgs.iterrows():
             params = {}
             msg_type = msg[1]['type']
@@ -293,25 +292,29 @@ def convert_to_midi(t_df, m_df):
     
     return mid 
 
-for song_idx in random.sample(range(0, len(song_df)), 5):
-    file_pd = files_pd.iloc[song_idx]
-    MIDI_path = file_pd['path']
-    MIDI_name = file_pd['filename']
-    song_hash = file_pd['song_hash']
+song_pd = song_df.merge(files_pd[['song_idx', 'path', 'filename']], on=['song_idx'], how='left')
 
-    print('Path: %s' % str(MIDI_path))    
+for song in song_pd.sample(frac=1, random_state=0).iterrows():
 
-    new_folder = exp_path + '\\' + str(song_idx)
+    MIDI_path = song[1]['path']
+    MIDI_name = song[1]['filename']
+    song_idx = song[1]['song_idx']
+
+    # print(song_idx)
+    # print('MIDI_path: %s' % MIDI_path)
+    # print('MIDI_name: %s' % MIDI_name)
+
+    new_folder = exp_path + '\\' + str(song[0])
     os.mkdir(new_folder)
     shutil.copy(MIDI_path, new_folder + '\\' + MIDI_name)
     
     # Writing the filtered MIDI to disk
     # Step 4a) Get the relevant columns 
-    ttrack_df = track_df.loc[track_df['song_hash'] == song_hash]
-    tmsg_df = msg_df.loc[msg_df['song_hash'] == song_hash]
+    ttrack_df = track_df.loc[track_df['song_idx'] == song[1]['song_idx']]
+    tmsg_df = msg_df.loc[msg_df['song_idx'] == song[1]['song_idx']]
     
     new_mid = convert_to_midi(ttrack_df, tmsg_df)
-    mid.save(new_folder + '\\FILTERED_' + MIDI_name)
+    new_mid.save(new_folder + '\\FILTERED_' + MIDI_name)
     
     
     # Step 1. Get the correct rows of files_pdf, track_df, and msg_df (DONE)
