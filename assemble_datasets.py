@@ -62,18 +62,35 @@ files_pd['song_idx'] = files_pd.index
 song_res = []
 track_res = []
 msg_res = []
+# all_msg_res = []
 
 exceptions  = []
 
-# If I want to ignore message types, I have to look at the time value and add the previous time
-# to the next message 
-ignore_types = {'copyright', 'sequencer_specific', 
-                'device_name', 'cue_marker', 'sequence_number',
-                'unknown_meta', 'text', 'lyrics', } # Need to experiment with what happens to the song when I remove these types 
-msg_keep_types = {'end_of_track', 'program_change', 'control_change',
-                  'note_on', 'note_off', 'pitchwheel', 'channel_prefix', 'aftertouch',
-                  'polytouch', 'stop', 'set_tempo', 'smpte_offset', 'sysex', 
+# Danger types to skip
+danger_types = {'unknown_meta'}
+
+# These are the message types we can safely ignore 
+ignore_types = {'copyright',                # Metadata 
+                'sequencer_specific', 
+                'device_name', 
+                'cue_marker', 
+                'sequence_number',          
+                 'text',                    # Metadata
+                 'lyrics',                  # Metadata
+                 'program_change',          # Doesn't change notes of song, only playback style
+                 'aftertouch',              # Doesn't change notes of song, only playback style
+                 'polytouch',               # Similar to aftertouch, doesn't change notes
+                 'control_change',          # Doesn't change notes of song, only playback style
+                 'pitchwheel',              # Changes pitch, without changing note, see: https://tinyurl.com/5cnthuum
+                 'sysex',                   # Meta message, doesn't affect notes
+                 'smpte_offset',
+                 } # Need to experiment with what happens to the song when I remove these types 
+
+
+msg_keep_types = {'end_of_track', 'channel_prefix','note_on', 'note_off',  
+                   'stop', 'set_tempo', 
                   'time_signature', 'key_signature', 'midi_port', }
+
 track_info_types = {'track_name',  'marker', 'instrument_name'}
 
 temp_known_types = ignore_types.union(msg_keep_types).union(track_info_types)
@@ -83,37 +100,70 @@ written_types = []
 ignored_types = []
 
 
-curr_song = random.randrange(len(files_pd))
-curr_song = 71049
+# curr_song = random.randrange(len(files_pd))
+# curr_song = 36
 
 for row in files_pd.iterrows():    
-    if (row[0] < curr_song):
-        continue 
-    if (row[0] > curr_song):
+    # if (row[0] < curr_song):
+    #     continue 
+    if (row[0] > 10):
         break
    
+
+    unknown_meta_detected = False
+   
     print('%d: %s' % (row[0], row[1]['path']))
-    
+
     try:
         mid = MidiFile(row[1]['path'], clip=True)
-        song_ntracks = len(mid.tracks)
-        song_type = mid.type    
-        song_len = mid.length
-        song_tpb = mid.ticks_per_beat
-        song_charset = mid.charset 
-        song_dict = {'song_idx': row[0], 'n_tracks': song_ntracks, 'MIDI_type': song_type,
-                  'length(s)': song_len, 'ticks_per_beat': song_tpb, 'charset': song_charset}
     except Exception as e:
         exceptions.append(e)
-        print('Problem with file, skipping!')
-        continue
+        print('Problem Reading MIDIFILE')
+        continue 
     
-    # Song Level Information - If the song is correct
-    song_res.append(song_dict)
+    try:
+        song_ntracks = len(mid.tracks)
+    except Exception as e:
+        song_ntracks = None
+        exceptions.append(e)
+        print('Problem reading number of tracks')
+    
+    try:
+        song_type = mid.type
+    except Exception as e:
+        song_type = None 
+        exceptions.append(e)
+        print('Problem reading song type')
+    
+    try:
+        song_len = mid.length
+    except Exception as e:
+        song_len = None
+        exceptions.append(e)
+        print('Problem reading song length')
+        
+    try:
+        song_tpb = mid.ticks_per_beat
+    except Exception as e:
+        song_tpb = None 
+        exceptions.append(e)
+        print('Problem reading song ticks per beat')
+    
+    try:
+        song_charset = mid.charset
+    except Exception as e:
+        song_charset = None 
+        exceptions.append(e)
+        print('Problem reading song charset')
     
     # Track Level Information 
-    
+    track_dicts = []
+    msg_dicts = []
     for track_count, track in enumerate(mid.tracks): 
+        
+        if (unknown_meta_detected):
+            break
+        
         print('Starting Track %d' % track_count)
         track_orig_nmsgs = len(track)
         track_name = track.name
@@ -138,20 +188,26 @@ for row in files_pd.iterrows():
         
         for msg_count, msg in enumerate(track):
             
+            if (msg.type == 'unknown_meta'):
+                unknown_meta_detected = True
+                break
+            
+            # all_msg_res.append(msg.dict())
+            
+            # if (msg.type == 'smpte_offset'):
+            #     print(row[0])
+            #     print(msg.dict())
+            #     print(msg.type)
+            #     print(msg.is_meta)
+            #     input('Batman')
+            
             if (msg.type in ignore_types):
                 skipped_time += msg.time
                 ignored_types.append(msg.type)
                 continue
             
             used_types.append(msg.type)
-            
 
-            # if (msg.type == 'lyrics'):
-            #     print(msg.dict())
-            #     print(msg.type)
-            #     print(msg.is_meta)
-            #     input('Batman')
-            
             # These properties will always be defined, so we can always store them.  
             msg_dict = {}
             msg_dict['count'] = msg_count
@@ -171,24 +227,19 @@ for row in files_pd.iterrows():
                     track_inst_name = msg.name
                 continue 
             
-            # If the message falls under these categories, I don't want to 
-            # merge msg.dict() with the msg_dict that I created. 
-            # This prevents the keys in the msg.dict() from becoming 
-            # columns in the new dataframe. 
-            
-            # I need to clean up this logic somehow, and ensure that 
-            # I correctly assigned skipped_time if I skip a type of message.  
             
             if (msg.type == 'set_tempo'):
                 track_tempo.append(msg.tempo)
                 track_bpm.append(tempo2bpm(msg.tempo))
                 msg_dict['tempo'] = msg.tempo
+                msg_dict['time'] = msg.time
                 
             elif (msg.type == 'smpte_offset'):
+                track_smpte = msg.dict()
                 msg_dict['other'] = msg.dict()
                 
-            elif (msg.type == 'sysex'):
-                msg_dict['other'] = msg.dict()
+            # elif (msg.type == 'sysex'):
+            #     msg_dict['other'] = msg.dict()
                 
             elif (msg.type == 'time_signature'):
                 track_time_sig.append(str(msg.numerator) + '/' + str(msg.denominator))
@@ -203,8 +254,8 @@ for row in files_pd.iterrows():
             elif (msg.type == 'midi_port'):
                 msg_dict['other'] = msg.dict()
                 
-            elif (msg.type == 'lyrics'):
-                msg_dict['other'] = msg.dict()
+            # elif (msg.type == 'lyrics'):
+            #     msg_dict['other'] = msg.dict()
                 
             else: 
                 msg_dict = {**msg_dict, **msg.dict()}
@@ -217,12 +268,12 @@ for row in files_pd.iterrows():
             else:
                 msg_dict['time'] = skipped_time
                 
-            msg_res.append(msg_dict)
+            msg_dicts.append(msg_dict)
             track_new_msg_counter += 1
             skipped_time = 0
 
         
-        track_dict = {'song_idx': row[0], 'song_name': row[1]['filename'],'track_num': track_count, 
+        track_dicts.append({'song_idx': row[0], 'song_name': row[1]['filename'],'track_num': track_count, 
                       'track_orig_num_msgs': track_orig_nmsgs, 'track_new_num_msgs': track_new_msg_counter,
                       'track_name': track_name, 
                       'track_tempo(s)': track_tempo, 'track_bpm(s)': track_bpm, 
@@ -234,10 +285,18 @@ for row in files_pd.iterrows():
                       'track_msg_types': track_msg_types, 'track_has_pitchwheel': track_has_pitchwheel,
                       #'track_text': track_text, 
                       #'track_length_seconds': track_len_seconds,
-
-                      }
-        track_res.append(track_dict)
+                      })
     
+    # Skip this MIDI files
+    if (unknown_meta_detected): 
+        continue
+    
+    # Only save song, track, and message level results if no unknown_meta msg types detected
+    song_dict = {'song_idx': row[0], 'n_tracks': song_ntracks, 'MIDI_type': song_type,
+                  'length(s)': song_len, 'ticks_per_beat': song_tpb, 'charset': song_charset}
+    song_res.append(song_dict)
+    track_res += track_dicts
+    msg_res += msg_dicts
     
 # print('Song level exceptions')
 # print(str(exceptions))
@@ -246,8 +305,14 @@ for row in files_pd.iterrows():
 song_df = pd.DataFrame.from_records(song_res)
 track_df = pd.DataFrame.from_records(track_res)
 msg_df = pd.DataFrame.from_records(msg_res)
+# all_msg_df = pd.DataFrame.from_records(all_msg_res)
 
 files_pd = files_pd.merge(song_df, left_on=['song_idx'], right_on=['song_idx'], how='left')
+
+# Save the dataframes to h5 for fast reading 
+files_pd.to_hdf('files_df(key=files).h5', key='files')
+track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
+msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
 
 # Okay. Experiment. Copy 10 songs and write the new, reassembled versions to disk.
 # See if The MIDI files sound the same as before. 
@@ -282,11 +347,6 @@ def convert_to_midi(t_df, m_df, params):
                     nm = MetaMessage('set_tempo', 
                                      time=msg_time, 
                                      tempo=int(msg[1]['tempo']))
-                    
-                    # print(msg[1])
-                    # print(nm)
-                    # input('Press enter to continue')
-                    
                 elif (msg_type == 'end_of_track'):
                     nm = MetaMessage('end_of_track',
                                      time=msg_time)
@@ -323,46 +383,46 @@ def convert_to_midi(t_df, m_df, params):
                                      time=int(msg[1]['other']['time']), 
                                      text=msg[1]['other']['text'])
             else:
-                if (msg_type == 'control_change'):
-                    nm = Message(msg_type, 
-                                 time=msg_time, 
-                                 channel=int(msg[1]['channel']),
-                                 control=int(msg[1]['control']),
-                                 value=int(msg[1]['value']))
-                elif (msg_type == 'program_change'):
-                    nm = Message(msg_type,
-                                 time=msg_time, 
-                                 program=int(msg[1]['program']),
-                                 channel=int(msg[1]['channel']))
-                elif (msg_type == 'note_on' or msg_type == 'note_off'):
+                # if (msg_type == 'control_change'):
+                #     nm = Message(msg_type, 
+                #                  time=msg_time, 
+                #                  channel=int(msg[1]['channel']),
+                #                  control=int(msg[1]['control']),
+                #                  value=int(msg[1]['value']))
+                # elif (msg_type == 'program_change'):
+                #     nm = Message(msg_type,
+                #                  time=msg_time, 
+                #                  program=int(msg[1]['program']),
+                #                  channel=int(msg[1]['channel']))
+                if (msg_type == 'note_on' or msg_type == 'note_off'):
                     nm = Message(msg_type, 
                                  time=msg_time, 
                                  channel=int(msg[1]['channel']),
                                  note=int(msg[1]['note']),
                                  velocity=int(msg[1]['velocity']))
-                elif (msg_type == 'polytouch'):
-                    nm = Message(msg_type, 
-                                 time=msg_time, 
-                                 channel=int(msg[1]['channel']),
-                                 note=int(msg[1]['note']),
-                                 value=int(msg[1]['value']))
-                elif (msg_type == 'aftertouch'):
-                    nm = Message(msg_type, 
-                                 time=msg_time, 
-                                 channel=int(msg[1]['channel']),
-                                 value=int(msg[1]['value']))
-                elif (msg_type == 'pitchwheel'):
-                    nm = Message(msg_type, 
-                                  time=msg_time, 
-                                  channel=int(msg[1]['channel']),
-                                  pitch=int(msg[1]['pitch']))
+                # elif (msg_type == 'polytouch'):
+                #     nm = Message(msg_type, 
+                #                  time=msg_time, 
+                #                  channel=int(msg[1]['channel']),
+                #                  note=int(msg[1]['note']),
+                #                  value=int(msg[1]['value']))
+                # elif (msg_type == 'aftertouch'):
+                #     nm = Message(msg_type, 
+                #                  time=msg_time, 
+                #                  channel=int(msg[1]['channel']),
+                #                  value=int(msg[1]['value']))
+                # elif (msg_type == 'pitchwheel'):
+                #     nm = Message(msg_type, 
+                #                   time=msg_time, 
+                #                   channel=int(msg[1]['channel']),
+                #                   pitch=int(msg[1]['pitch']))
                 elif (msg_type == 'stop'):
                     nm = Message(msg_type, 
                                  time=msg_time)
-                elif (msg_type == 'sysex'):
-                    nm = Message(msg_type, 
-                                 time=msg_time,
-                                 data=msg[1]['other']['data'])
+                # elif (msg_type == 'sysex'):
+                #     nm = Message(msg_type, 
+                #                  time=msg_time,
+                #                  data=msg[1]['other']['data'])
                 
             curr_track.append(nm)
             if (nm.type in written_types):
@@ -380,51 +440,42 @@ def convert_to_midi(t_df, m_df, params):
     
     return mid 
 
-song_pd = song_df.merge(files_pd[['song_idx', 'path', 'filename']], on=['song_idx'], how='left')
+# FOR TESTING PURPOSES: OUTPUT SAMPLE OF FILTERED MIDI MESSAGES
+# song_pd = song_df.merge(files_pd[['song_idx', 'path', 'filename']], on=['song_idx'], how='left')
+# for song in song_pd.sample(n=1, random_state=0).iterrows():
 
-for song in song_pd.sample(frac=1, random_state=0).iterrows():
-
-    MIDI_path = song[1]['path']
-    MIDI_name = song[1]['filename']
-    song_idx = song[1]['song_idx']
+#     MIDI_path = song[1]['path']
+#     MIDI_name = song[1]['filename']
+#     song_idx = song[1]['song_idx']
     
-    midi_params = {}
-    midi_params['ticks_per_beat'] = song[1]['ticks_per_beat']
-    midi_params['type'] = song[1]['MIDI_type']
+#     midi_params = {}
     
-    # print(song_idx)
-    # print('MIDI_path: %s' % MIDI_path)
-    # print('MIDI_name: %s' % MIDI_name)
-
-    new_folder = exp_path + '\\' + str(song[0])
-    os.mkdir(new_folder)
-    shutil.copy(MIDI_path, new_folder + '\\' + MIDI_name)
+#     midi_params['ticks_per_beat'] = int(song[1]['ticks_per_beat'])
+#     midi_params['type'] = song[1]['MIDI_type']
     
-    # Writing the filtered MIDI to disk
-    # Step 4a) Get the relevant columns 
-    ttrack_df = track_df.loc[track_df['song_idx'] == song[1]['song_idx']]
-    tmsg_df = msg_df.loc[msg_df['song_idx'] == song[1]['song_idx']]
+#     # print(song_idx)
+#     # print('MIDI_path: %s' % MIDI_path)
+#     # print('MIDI_name: %s' % MIDI_name)
+
+#     new_folder = exp_path + '\\' + str(song[0])
+#     os.mkdir(new_folder)
+#     shutil.copy(MIDI_path, new_folder + '\\' + MIDI_name)
     
-    new_mid = convert_to_midi(ttrack_df, tmsg_df, midi_params)
-    new_mid.save(new_folder + '\\FILTERED_' + MIDI_name)
+#     # Writing the filtered MIDI to disk
+#     # Step 4a) Get the relevant columns 
+#     ttrack_df = track_df.loc[track_df['song_idx'] == song[1]['song_idx']]
+#     tmsg_df = msg_df.loc[msg_df['song_idx'] == song[1]['song_idx']]
+    
+#     new_mid = convert_to_midi(ttrack_df, tmsg_df, midi_params)
+#     new_mid.save(new_folder + '\\FILTERED_' + MIDI_name)
     
 
-    # Okay. I basically need to figure out what I missed.
-    # Probably some track level information 
-    
-    #print('Batman')
-    # Step 1. Get the correct rows of files_pdf, track_df, and msg_df (DONE)
-    # Step 2. Make a folder for that song                             (DONE)
-    # Step 3. Copy the old MIDI over as original                      (DONE)
-    # Step 4. Write the filtered MIDI to disk                           
-    # Step 5. Compare the original vs. generated songs via audio 
 
+# print('Ignored types: ')
+# print(Counter(ignored_types))
 
-print('Ignored types: ')
-print(Counter(ignored_types))
+# print('Used Types: ')
+# print(Counter(used_types))
 
-print('Used Types: ')
-print(Counter(used_types))
-
-print('Written Types: ')
-print(written_types)
+# print('Written Types: ')
+# print(written_types)

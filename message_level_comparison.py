@@ -9,8 +9,8 @@ from mido import bpm2tempo
 from mido import tempo2bpm 
 from mido import MetaMessage
 
-orig_path = r'C:\Users\Darth\Desktop\CSC2506_Project\MIDI_reconstruction_experiment\0\7ca554a7bb1fc0d97c433787d9e3d475.mid'
-new_path = r'C:\Users\Darth\Desktop\CSC2506_Project\MIDI_reconstruction_experiment\0\FILTERED_7ca554a7bb1fc0d97c433787d9e3d475.mid'
+orig_path = r'C:\Users\Darth\Desktop\CSC2506_Project\MIDI_reconstruction_experiment\0\alb_esp1.mid'
+new_path = r'C:\Users\Darth\Desktop\CSC2506_Project\MIDI_reconstruction_experiment\0\FILTERED_alb_esp1.mid'
 
 mid1 = MidiFile(orig_path)
 track1 = mid1.tracks[0]
@@ -22,7 +22,9 @@ for i in range(0, len(track1)):
     str1 = str(track1[i])
     str2 = str(track2[i])
     
+    
     if (str1 != str2):
+        print('i: %d' % i)
         print(str1 == str2)
         print('Track1: %s' % str1)
         print('Track2: %s\n\n\n\n' % str2)
