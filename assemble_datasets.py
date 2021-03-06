@@ -2,6 +2,7 @@ import os
 import glob  
 import random
 import shutil
+import numpy as np
 import pandas as pd
 
 from collections import Counter
@@ -86,29 +87,37 @@ ignore_types = {'copyright',                # Metadata
                  'smpte_offset',
                  } # Need to experiment with what happens to the song when I remove these types 
 
-
 msg_keep_types = {'end_of_track', 'channel_prefix','note_on', 'note_off',  
                    'stop', 'set_tempo', 
                   'time_signature', 'key_signature', 'midi_port', }
-
 track_info_types = {'track_name',  'marker', 'instrument_name'}
-
 temp_known_types = ignore_types.union(msg_keep_types).union(track_info_types)
 
 used_types = []
 written_types = []
 ignored_types = []
 
+# Load the tracks that have already been processed
+if os.path.exists('track_df.json'):
+    comp_tracks = pd.read_json('track_df.json')
+    last_song = max(comp_tracks['song_idx'].unique())
+else:
+    comp_tracks = pd.DataFrame()
+    last_song = -1
+    
+checkpoint_freq = 1000
 
 # curr_song = random.randrange(len(files_pd))
-# curr_song = 36
+# curr_song = 41232
 
 for row in files_pd.iterrows():    
     # if (row[0] < curr_song):
     #     continue 
-    if (row[0] > 10):
-        break
-   
+    # if (row[0] > 10):
+    #     break
+
+    if (row[0] <= last_song):
+        continue 
 
     unknown_meta_detected = False
    
@@ -230,7 +239,12 @@ for row in files_pd.iterrows():
             
             if (msg.type == 'set_tempo'):
                 track_tempo.append(msg.tempo)
-                track_bpm.append(tempo2bpm(msg.tempo))
+                
+                try:
+                    track_bpm.append(tempo2bpm(msg.tempo))
+                except Exception:
+                    track_bpm.append(np.nan)
+                
                 msg_dict['tempo'] = msg.tempo
                 msg_dict['time'] = msg.time
                 
@@ -296,7 +310,23 @@ for row in files_pd.iterrows():
                   'length(s)': song_len, 'ticks_per_beat': song_tpb, 'charset': song_charset}
     song_res.append(song_dict)
     track_res += track_dicts
-    msg_res += msg_dicts
+    #msg_res += msg_dicts
+    
+    # Checkpointing functionality
+    if (row[0] % checkpoint_freq == 0):
+        song_df = pd.DataFrame.from_records(song_res)
+        track_df = pd.DataFrame.from_records(track_res)
+        #msg_df = pd.DataFrame.from_records(msg_res)
+        
+        #files_pd.to_json('files_df.json')
+        #track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
+        track_df = pd.concat([comp_tracks, track_df])
+        track_df.reset_index(drop=True, inplace=True)
+
+        track_df.to_json('track_df.json')
+        #msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
+        
+        
     
 # print('Song level exceptions')
 # print(str(exceptions))
@@ -304,15 +334,20 @@ for row in files_pd.iterrows():
 
 song_df = pd.DataFrame.from_records(song_res)
 track_df = pd.DataFrame.from_records(track_res)
-msg_df = pd.DataFrame.from_records(msg_res)
+track_df = pd.concat([comp_tracks, track_df])
+track_df.reset_index(drop=True, inplace=True)
+
+
+#msg_df = pd.DataFrame.from_records(msg_res)
 # all_msg_df = pd.DataFrame.from_records(all_msg_res)
 
 files_pd = files_pd.merge(song_df, left_on=['song_idx'], right_on=['song_idx'], how='left')
 
 # Save the dataframes to h5 for fast reading 
-files_pd.to_hdf('files_df(key=files).h5', key='files')
-track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
-msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
+files_pd.to_json('files_df.json')
+#track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
+track_df.to_json('track_df.json')
+#msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
 
 # Okay. Experiment. Copy 10 songs and write the new, reassembled versions to disk.
 # See if The MIDI files sound the same as before. 
