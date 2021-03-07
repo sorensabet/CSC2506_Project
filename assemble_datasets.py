@@ -15,12 +15,12 @@ from mido import Message
 from mido import MetaMessage
 
 
-datadir = r"C:\Users\Darth\Desktop\CSC2506_Project\Raw Data" 
+datadir = "/Users/sorensabet/Desktop/Master's Coursework/CSC2506_Project/Raw Data/"
 os.chdir(datadir)
 
-files = glob.glob(datadir + '\**\*.mid', recursive=True)
-files_pd = pd.DataFrame([x.split('Raw Data\\')[1] for x in files])
-temp = files_pd[0].str.split('\\', expand=True)
+files = glob.glob(datadir + '/**/*.mid', recursive=True)
+files_pd = pd.DataFrame([x.split('Raw Data/')[1] for x in files])
+temp = files_pd[0].str.split('/', expand=True)
 temp.rename(columns={0: 'dataset', 1: 'subfolder', 2: 'filename'}, inplace=True)
 files_pd = files_pd.merge(temp, left_index=True, right_index=True, how='left')
 files_pd.rename(columns={0: 'path'}, inplace=True)
@@ -105,7 +105,7 @@ else:
     comp_tracks = pd.DataFrame()
     last_song = -1
     
-checkpoint_freq = 1000
+checkpoint_freq = 100000
 
 # curr_song = random.randrange(len(files_pd))
 # curr_song = 41232
@@ -113,8 +113,8 @@ checkpoint_freq = 1000
 for row in files_pd.iterrows():    
     # if (row[0] < curr_song):
     #     continue 
-    # if (row[0] > 10):
-    #     break
+    if (row[0] > 1000):
+        break
 
     if (row[0] <= last_song):
         continue 
@@ -219,12 +219,12 @@ for row in files_pd.iterrows():
 
             # These properties will always be defined, so we can always store them.  
             msg_dict = {}
-            msg_dict['count'] = msg_count
+            #msg_dict['count'] = msg_count
             msg_dict['type'] = msg.type
             msg_dict['song_idx'] = row[0]
             msg_dict['track_num'] = track_count 
-            msg_dict['meta'] = msg.is_meta 
-            msg_dict['other'] = None
+            #msg_dict['meta'] = msg.is_meta 
+            #msg_dict['other'] = None
             track_msg_types.add(msg.type)
             
             if (msg.type in track_info_types):
@@ -245,12 +245,12 @@ for row in files_pd.iterrows():
                 except Exception:
                     track_bpm.append(np.nan)
                 
-                msg_dict['tempo'] = msg.tempo
+                msg_dict['velocity'] = msg.tempo
                 msg_dict['time'] = msg.time
                 
             elif (msg.type == 'smpte_offset'):
                 track_smpte = msg.dict()
-                msg_dict['other'] = msg.dict()
+                #msg_dict['other'] = msg.dict()
                 
             # elif (msg.type == 'sysex'):
             #     msg_dict['other'] = msg.dict()
@@ -259,18 +259,18 @@ for row in files_pd.iterrows():
                 track_time_sig.append(str(msg.numerator) + '/' + str(msg.denominator))
                 track_time_sig_cpc.append(msg.clocks_per_click)
                 track_time_sig_n32nd.append(msg.notated_32nd_notes_per_beat)
-                msg_dict['other'] = msg.dict()
+                #msg_dict['other'] = msg.dict()
                 
             elif (msg.type == 'key_signature'):
                 track_key_sig.append(msg.key)
-                msg_dict['other'] = msg.dict()
+                #msg_dict['other'] = msg.dict()
                 
             elif (msg.type == 'midi_port'):
-                msg_dict['other'] = msg.dict()
+                #msg_dict['other'] = msg.dict()
                 
             # elif (msg.type == 'lyrics'):
             #     msg_dict['other'] = msg.dict()
-                
+                pass
             else: 
                 msg_dict = {**msg_dict, **msg.dict()}
 
@@ -281,6 +281,9 @@ for row in files_pd.iterrows():
                 msg_dict['time'] += skipped_time
             else:
                 msg_dict['time'] = skipped_time
+                
+            if ('channel' in msg_dict):
+                del msg_dict['channel']
                 
             msg_dicts.append(msg_dict)
             track_new_msg_counter += 1
@@ -307,47 +310,38 @@ for row in files_pd.iterrows():
     
     # Only save song, track, and message level results if no unknown_meta msg types detected
     song_dict = {'song_idx': row[0], 'n_tracks': song_ntracks, 'MIDI_type': song_type,
-                  'length(s)': song_len, 'ticks_per_beat': song_tpb, 'charset': song_charset}
+                  'length(s)': song_len, 'ticks_per_beat': song_tpb}
     song_res.append(song_dict)
     track_res += track_dicts
-    #msg_res += msg_dicts
+    msg_res += msg_dicts
     
     # Checkpointing functionality
     if (row[0] % checkpoint_freq == 0):
         song_df = pd.DataFrame.from_records(song_res)
-        track_df = pd.DataFrame.from_records(track_res)
         #msg_df = pd.DataFrame.from_records(msg_res)
         
         #files_pd.to_json('files_df.json')
         #track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
-        track_df = pd.concat([comp_tracks, track_df])
+        track_df = pd.concat([comp_tracks, pd.DataFrame.from_records(track_res)])
         track_df.reset_index(drop=True, inplace=True)
-
         track_df.to_json('track_df.json')
         #msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
         
-        
-    
 # print('Song level exceptions')
 # print(str(exceptions))
 
-
 song_df = pd.DataFrame.from_records(song_res)
-track_df = pd.DataFrame.from_records(track_res)
-track_df = pd.concat([comp_tracks, track_df])
+track_df = pd.concat([comp_tracks, pd.DataFrame.from_records(track_res)])
 track_df.reset_index(drop=True, inplace=True)
+msg_df = pd.DataFrame.from_records(msg_res)
 
+save_path = "/Users/sorensabet/Desktop/Master's Coursework/CSC2506_Project/Dataframes/"
+song_df = files_pd.merge(song_df, left_on=['song_idx'], right_on=['song_idx'], how='left')
+song_df = song_df.astype({'dataset': 'category', 'subfolder': 'category'})
 
-#msg_df = pd.DataFrame.from_records(msg_res)
-# all_msg_df = pd.DataFrame.from_records(all_msg_res)
-
-files_pd = files_pd.merge(song_df, left_on=['song_idx'], right_on=['song_idx'], how='left')
-
-# Save the dataframes to h5 for fast reading 
-files_pd.to_json('files_df.json')
-#track_df.to_hdf('track_df(key=tracks).h5', key='tracks')
-track_df.to_json('track_df.json')
-#msg_df.to_hdf('msgs_df(key=messages).h5', key='messages')
+song_df.to_json(save_path + 'song_df.json')
+track_df.to_json(save_path + 'track_df.json')
+msg_df.to_json(save_path + 'msg_df.json')
 
 # Okay. Experiment. Copy 10 songs and write the new, reassembled versions to disk.
 # See if The MIDI files sound the same as before. 
