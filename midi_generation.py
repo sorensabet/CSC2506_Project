@@ -84,11 +84,11 @@ all_notes = []
 savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
 
 # Adding notes 
-# for c, i in enumerate(range(60, 64)):
-#     all_notes += add_note(note=i, start_beat=c, length_in_beats=1)
+for c, i in enumerate(range(60, 80)):
+    all_notes += add_note(note=i, start_beat=c, length_in_beats=1)
 
 # Adding chords
-for c, i in enumerate(range(60,68,2)):
-    all_notes += add_chord([i, i+4, i+7], c, 1)
+for c, i in enumerate(range(60,64,2)):
+    all_notes += add_chord([i, i+4, i+7], c, 0.5)
 
 makefile(all_notes, savedir, 'test.mid')
