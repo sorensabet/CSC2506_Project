@@ -1,96 +1,94 @@
-from midiutil import MIDIFile
-import pygame
-import time as t
+import os
+import time
+import shutil
+import pypianoroll
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import pretty_midi
 
+from tqdm import tqdm
+from pypianoroll import Multitrack, Track, BinaryTrack
+from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
 
-def play_music(music_file):
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+pd.set_option('mode.chained_assignment', None)
+
+def add_note(note, start_beat, length_in_beats):
     """
-    stream music with mixer.music module in blocking manner
-    this will stream the sound from disk while playing
+        note:               MIDI note number, from 0-127
+        start_beat:         The beat on which the note starts playing, from start of the song
+        length_in_beats:    The length of the note in beats 
     """
-    clock = pygame.time.Clock()
-    try:
-        pygame.mixer.music.load(music_file)
-        print("Music file %s loaded!" % music_file)
-    except pygame.error:
-        print("File %s not found! (%s)" % (music_file, pygame.get_error()))
-        return
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        # check if playback has finished
-        clock.tick(30)
-    return None
+    
+    note_on = {'type': 'note_on', 'note': i, 'start_beat': start_beat}
+    note_off = {'type': 'note_off', 'note': i, 'start_beat': start_beat + length_in_beats}
+    msgs = [note_on, note_off]
+    return msgs
 
-def play_file(filename):
-    freq = 44100  # audio CD quality
-    bitsize = -16  # unsigned 16 bit
-    channels = 2  # 1 is mono, 2 is stereo
-    buffer = 1024  # number of samples
-    pygame.mixer.init(freq, bitsize, channels, buffer)
+def add_chord(notes, start_beat, length_in_beats, note_type=None): 
+    """
+        notes:              A list of the notes to be included in the chord 
+        start_beat:         See add_note
+        length_in_beats:    See add_note
+    """
 
-    # optional volume 0 to 1.0
-    pygame.mixer.music.set_volume(0.8)
+    msgs = []
+    for note in notes: 
+        note_on = {'type': 'note_on', 'note': note, 'start_beat': start_beat}
+        note_off = {'type': 'note_off', 'note': note, 'start_beat': start_beat + length_in_beats}
+        msgs.append(note_on)
+        msgs.append(note_off)
+    return msgs
 
-    try:
-        play_music(filename)
-    except KeyboardInterrupt:
-        # if user hits Ctrl/C then exit
-        # (works only in console mode)
-        pygame.mixer.music.fadeout(1000)
-        pygame.mixer.music.stop()
-        raise SystemExit
-    return None
+def makefile(all_notes, savedir=None, filename=None):
+    
+    df = pd.DataFrame.from_records(all_notes)                                  # Assemble dataframe from list of dictionaries
+    df.sort_values(by=['start_beat'], inplace=True)
+    df['ctime'] = df['start_beat']*480                                         # Use 480 ticks per beat 
+    df['time'] = df['ctime'] - df['ctime'].shift(1)                            # MIDI commands are sequential, we need to go from cumulative time to time between events
+    df = df[['type', 'note', 'time', 'start_beat', 'ctime']].fillna(0)
+    df = df.astype({'type': 'category', 'time': int, 
+                    'start_beat': float, 'ctime': float})
+    df['velocity'] = np.where(df['type'] == 'note_on', 64, 0)
+        
+    # Create the track specific MIDI file 
+    mid = MidiFile(ticks_per_beat=480, type=0)
+    midiTrack = MidiTrack()
+    
+    # Tempo MIDI Message (Set to 120 BPM)
+    midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
 
-# Defining maj/minor scales
-W = 2
-H = 1
-maj = [W,W,H,W,W,W,H]
-nmin = [W,H,W,W,H,W,W]
+    # Time Signature MIDI Message (Standardize to 120bpm)
+    midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
+                                 clocks_per_click=24, notated_32nd_notes_per_beat=8))
 
-# MIDI Track Details
-track    = 0
-channel  = 0
-time     = 0   # In beats
-duration = 1   # In beats
-tempo    = 120  # In BPM
-volume   = 100 # 0-127, as per the MIDI standard
+    # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
+    midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
+    
+    # Individual Messages corresponding to notes 
+    midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[6]), channel=0) for x in df.itertuples()]
+    
+    # End of Track MIDI Message
+    midiTrack.append(MetaMessage('end_of_track', time=0))
+    
+    # Append Track to MIDI File
+    mid.tracks.append(midiTrack)
 
-# degrees  = [0, 62, 64, 65, 67, 69, 71, 72] # MIDI Note number, C major scale
-
-# version (3 or 8 note version)
-v = 8
-
-# 8 note POC on major scale
-# i is the MIDI number of the first key, see https://www.researchgate.net/profile/Mickael_Tits/publication/283460243/figure/fig8/AS:614346480685058@1523483023512/88-notes-classical-keyboard-Note-names-and-MIDI-numbers.png
-count = 0
-for i in range(60, 96):  # i represents a note on the keyboard, 60 is middle C
-    notes = [i]
-    for j in range(0,v-1):
-        notes.append(notes[-1] + maj[j]) # Increment the last note by a tone or semitone based on the scale
-    print(notes)
-
-    MyMIDI = MIDIFile(1)  # One track, defaults to format 1 (tempo track # automatically created)
-    MyMIDI.addTempo(track, time, tempo)
-
-    for pitch in notes:
-        MyMIDI.addNote(track, channel, pitch, time, duration, volume)
-        time = time + 1
-
-    file = 'maj-scale-' + str(v) + '-' + str(i)
-    with open(str(v) + '_notes/' + file + ".mid", "wb") as output_file:
-        MyMIDI.writeFile(output_file)
-
-    # Plays the file!
-    play_file(str(v) + '_notes/' + file + ".mid")
-    t.sleep(0.5) # Prevents an error
-    if (count > 0):
-        break
-    count += 1
+    mid.save(savedir + '/' + filename)
+    return None 
 
 
+all_notes = []
+savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
 
+# Adding notes 
+# for c, i in enumerate(range(60, 64)):
+#     all_notes += add_note(note=i, start_beat=c, length_in_beats=1)
 
+# Adding chords
+for c, i in enumerate(range(60,68,2)):
+    all_notes += add_chord([i, i+4, i+7], c, 1)
 
-
-
-
+makefile(all_notes, savedir, 'test.mid')
