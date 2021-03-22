@@ -1,19 +1,6 @@
-import os
-import time
-import shutil
-import pypianoroll
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import pretty_midi
-
-from tqdm import tqdm
-from pypianoroll import Multitrack, Track, BinaryTrack
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
-
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', None)
-pd.set_option('mode.chained_assignment', None)
 
 def add_note(note, start_beat, length_in_beats):
     """
