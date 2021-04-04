@@ -1,3 +1,5 @@
+import os 
+import shutil
 import numpy as np
 import pandas as pd
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
@@ -68,13 +70,241 @@ def makefile(all_notes, savedir=None, filename=None):
 
 if __name__ == '__main__':
     # Parameters
-    savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
+    #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
+    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
+    
+    if (os.path.exists(savedir)):
+        shutil.rmtree(savedir)
+    os.mkdir(savedir)
+    
     GENERATE_SCALES = False
     GENERATE_TRIADS = False
-    GENERATE_SEVENTHS = True
+    GENERATE_SEVENTHS = False
+    GENERATE_MEL_1 = False
+    GENERATE_MEL_2 = False
+    GENERATE_CHORD_PROG_1 = False   # MAJ/MIN: C, A, F, G (Also add broken, solid versions)
+    GENERATE_CHORD_PROG_2 = False   
+    GENERATE_MEL_TWINKLE = True
+    GENERATE_MEL_HAPPYBDAY = False
+    
+    
     num_octaves_scale = 4
     num_octaves_chord = 4
     num_octaves_sevenths = 4
+    key_range = range(36,48)
+    dec_key_range = range(96, 84, -1)
+    note_lengths = {'32nd': 0.25, 'dot_32nd': 0.375, 
+                    '16th': 0.5,  'dot_16th': 0.75,
+                    '4th': 1,     'dot_4th': 1.5, 
+                    '2nd': 2,     'dot_2nd': 3, 
+                    '1st': 4,     'dot_1st': 6}
+    
+    if GENERATE_CHORD_PROG_1: 
+        major_semitones = [4, 3, 5, -5, -3, -7, # Chord 1 
+                           4, 3, 5, -5, -3, -7, # Chord 2
+                           4, 3, 5, -5, -3, -2, # Chord 3
+                           4, 3, 5, -5, -3, -2] # Chord 4 
+        minor_semitones = [3, 4, 5, -5, -4, -6, # Chord 1
+                            3, 4, 5, -5, -4, -7, # Chord 2
+                            3, 4, 5, -5, -4, -1, # Chord 3 
+                            3, 4, 5, -5, -4, -3] # Chord 4 
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_note(note=note, start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        all_notes += add_note(note=(note-12), start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        note += i
+                    makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_1.mid'.format(scale, key, note_length))
+
+    if GENERATE_CHORD_PROG_2: 
+       # MAJ     MIN 
+       # CEGC    CEbGC
+       # GCEG    GCEbG
+       # CEGC    CEbGC
+       # GCEG    GCEbG
+       # CFAC    CFAbC
+       # FACF    FAbCF 
+       # CFAC    CFAbC
+       # FACF    FAbCF
+       # CEGC    CEbGC
+       # GCEG    GCEbG
+       # CEGC    CEbGC
+       # GCEG    GCEbG
+       # GBDG    GBbDG
+       # ACFA    ACEA
+       # BDGD    BbDGBb
+       # CEGC    CEbGC
+        
+        
+        major_semitones = [[ 0, 4, 7, 12],[-5, 0, 4, 7],
+                           [ 0, 4, 7, 12],[-5, 0, 4, 7],
+                           [ 0, 5, 9, 12],[ -7, -3, 0, 5],
+                           [ 0, 5, 9, 12],[ -7, -3, 0, 5],
+                           [ 0, 4, 7, 12],[-5, 0, 4, 7],
+                           [ 0, 4, 7, 12],[-5, 0, 4, 7],
+                           [ -5, -1, 2, 7], [ -3, 0, 5, 9],
+                           [ -1, 2, 7, 11], [0, 4, 7,12]]
+    
+        minor_semitones = [[ 0, 3, 7, 12],[-5, 0, 3, 7],
+                           [ 0, 3, 7, 12],[-5, 0, 3, 7],
+                           [ 0, 5, 8, 12],[ -7, -4, 0, 5],
+                           [ 0, 5, 8, 12],[ -7, -4, 0, 5],
+                           [ 0, 3, 7, 12],[-5, 0, 3, 7],
+                           [ 0, 3, 7, 12],[-5, 0, 3, 7],
+                           [ -5, -2, 2, 7], [-3, 0, 4, 9],
+                           [ -2, 2, 7, 10], [0, 3, 7,12]]
+        
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_chord(notes=[note + ch_n for ch_n in i], #RH
+                                               start_beat=note_lengths[note_length]*c, 
+                                               length_in_beats=note_lengths[note_length])
+                            
+                    #note += 1
+                    makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_2.mid'.format(scale, key, note_length))
+
+
+
+    if GENERATE_MEL_1: 
+        # Major Version           # Minor Version 
+
+        # C G E G C G F C         # C G E G C G F C 
+        # D G F G D G F D         # D G F G D G F D
+        # E G F G E G F G         # Eb G F G Eb G F G
+        # F A G A F E D C         # F Ab G A F Eb D C 
+        
+        major_semitones = [7, -2, 2, 5, -5, -2, 2, 
+                           -5, 5, -2, 2, 7, -7, -2, 2,
+                           -3, 3, -2, 2, 9, -9, -2, 2,
+                           -2, 4, -2, 2, 8, -1, -2, -2, -2] 
+        minor_semitones = [7, -2, 2, 5, -5, -2, 2, 
+                           -5, 5, -2, 2, 7, -7, -2, 2,
+                           -4, 4, -2, 2, 8, -8, -2, 2,
+                           -2, 3, -1, 1, 9, -2, -1, -2, -2] 
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_note(note=note, start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        all_notes += add_note(note=(note-12), start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        note += i
+                    makefile(all_notes, savedir, '{}_{}_{}_MEL_1.mid'.format(scale, key, note_length))
+
+    if GENERATE_MEL_2: 
+        # Major Version        # Minor Version 
+        # C D E F              # C D Eb F
+        # D E F G              # D Eb F G
+        # E F G A              # Eb F G Ab
+        # F G A C              # F Ab B C
+
+        major_semitones = [2, 2, 1, 
+                           -3, 2, 1, 2, 
+                           -3, 1, 2, 2, 
+                           -2, 2, 2, 1, 2] 
+        minor_semitones = [2, 1, 2, 
+                           -3, 1, 2, 2, 
+                           -4, 2, 2, 1 ,
+                           -3, 3, 3, 1, 1] 
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_note(note=note, start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        all_notes += add_note(note=(note-12), start_beat=note_lengths[note_length]*c, length_in_beats=0.5) # Right hand
+                        note += i
+                    makefile(all_notes, savedir, '{}_{}_{}_MEL_2.mid'.format(scale, key, note_length))
+
+    if GENERATE_MEL_TWINKLE:
+        # Slighlty modified Twinkle Twinkle Little Star
+        # Written to work with single note length 
+        
+        # Major Version
+        # C C G G A A G G F F E E D D C C 
+        # G G F F E E D D G G F F E E D D 
+        # C C G G A A G G F F E E D D C C 
+        
+        # Minor Version
+        # C C G G Ab Ab G G F F Eb Eb D D C C 
+        # G G F F Eb Eb D D G G F F Eb Eb D D 
+        # C C G G Ab Ab G G F F Eb Eb D D C C 
+        
+        major_semitones = [0, 7, 0, 2, 0, -2, 0, -2, 0, -1, 0, -2, 0, -2, 0, 
+                           7, 0, -2, 0, -1, 0, -2, 0, 5, 0, -2, 0, -1, 0, -2, 0,
+                           -2, 0, 7, 0, 2, 0, -2, 0, -2, 0, -1, 0, -2, 0, -2, 0, 0,]
+                        
+        minor_semitones = [0, 7, 0, 1, 0, -1, 0, -2, 0, -2, 0, -1, 0, -2, 0, 
+                           7, 0, -2, 0, -2, 0, -1, 0, 5, 0, -2, 0, -2, 0, -1, 0,
+                           -2, 0, 7, 0, 1, 0, -1, 0, -2, 0, -2, 0, -1, 0, -2, 0, 0]
+                        
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_note(note=note, start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        all_notes += add_note(note=(note-12), start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        note += i
+                    makefile(all_notes, savedir, '{}_{}_{}_MEL_TWINKLE.mid'.format(scale, key, note_length))
+
+    if GENERATE_MEL_HAPPYBDAY:
+        # Modified Happy Birthday (single note length)
+        
+        # Major Version
+        # C C D C F E E C 
+        # C C D C G F F C
+        # C C A F F E E D 
+        # Bb Bb A F G F F 
+        
+        # Minor Version
+        # C C D C F Eb Eb C 
+        # C C D C G F  F  C
+        # C C Ab F F Eb Eb D 
+        # Bb Bb Ab F G F F 
+        
+        major_semitones = [0, 2, -2, 5, -1, 0, -4, 
+                           0, 0, 2, -2, 7, -2, 0, -5,
+                           0, 0, 9, -4, 0, -1, 0, -2, 
+                           8, 0, -1, -4, 2, -2, 0, 0]
+                        
+        minor_semitones = [0, 2, -2, 5, -2, 0, -3, 
+                           0, 0, 2, -2, 7, -2, 0, -5,
+                           0, 0, 8, -3, 0, -2, 0, -1, 
+                           8, 0, -2, -3, 2, -2, 0, 0]
+                        
+        scales = {'major': major_semitones, 'minor': minor_semitones}            
+     
+        for key in key_range: 
+            for note_length in note_lengths.keys(): 
+                for scale in scales.keys(): 
+                    all_notes = [] 
+                    note = key 
+                    for c, i in enumerate(scales[scale]): # Step through transitions 
+                        all_notes += add_note(note=note, start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        all_notes += add_note(note=(note-12), start_beat=note_lengths[note_length]*c, length_in_beats=note_lengths[note_length]) # Right hand
+                        note += i
+                    makefile(all_notes, savedir, '{}_{}_{}_MEL_HAPPYBDAY.mid'.format(scale, key, note_length))
 
     if GENERATE_SCALES:
         all_notes = []
@@ -94,7 +324,7 @@ if __name__ == '__main__':
 
         # Write ascending scales for all keys
         for scale in scales:
-            for key in range(36, 48): # Iterate over all keys
+            for key in key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_lh_alternating = []
                 note = key
@@ -114,7 +344,7 @@ if __name__ == '__main__':
 
         # Write descending scales for all keys
         for scale in scales_dec:
-            for key in range(96, 84, -1): # Iterate over all keys
+            for key in dec_key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_lh_alternating = []
                 note = key
@@ -144,7 +374,7 @@ if __name__ == '__main__':
 
         # Write ascending chords for all keys
         for chord in chords:
-            for key in range(36, 48): # Iterate over all keys
+            for key in key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_broken = []
                 all_notes_alternating = []
@@ -224,7 +454,7 @@ if __name__ == '__main__':
 
         # Write descending chords for all keys
         for chord in chords_dec:
-            for key in range(96, 84, -1): # Iterate over all keys
+            for key in dec_key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_broken = []
                 all_notes_alternating = []
@@ -312,7 +542,7 @@ if __name__ == '__main__':
 
         # Write ascending chord sevenths for all keys
         for chord in chords_seventh:
-            for key in range(36, 48): # Iterate over all keys
+            for key in key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_broken = []
                 all_notes_alternating = []
@@ -393,7 +623,7 @@ if __name__ == '__main__':
 
         # Write descending chord sevenths for all keys
         for chord in chords_seventh_dec:
-            for key in range(96, 84, -1): # Iterate over all keys
+            for key in dec_key_range: # Iterate over all keys
                 all_notes = []
                 all_notes_broken = []
                 all_notes_alternating = []
