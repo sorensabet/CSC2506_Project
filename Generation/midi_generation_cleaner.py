@@ -729,7 +729,7 @@ if __name__ == '__main__':
     GENERATE_MEL_2 = False              # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
     GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
     GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
-    GENERATE_MEL_TWINKLE = False         # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
+    GENERATE_MEL_TWINKLE = True         # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
     GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
     
     # Total Expected Number of Files: 42,840
@@ -750,9 +750,9 @@ if __name__ == '__main__':
     key_range = range(36, 37)
     dec_key_range = range(115, 68, -1) # Max: 115, Min: 44 (actually 45 but range ignores last value)
     #dec_key_range = range(45, 115)
-    nls = {'64th': 0.125,'dot_64th': 0.1875,
-           '32nd': 0.25, 'dot_32nd': 0.375, 
-           '16th': 0.5,  'dot_16th': 0.75,
+    nls = {'32nd': 0.125, 'dot_32nd': 0.1875, 
+           '16th': 0.25,  'dot_16th': 0.375,
+           '8th': 0.5,   'dot_8th': 0.75,
            '4th': 1,     'dot_4th': 1.5, 
            '2nd': 2,     'dot_2nd': 3, 
            '1st': 4,     'dot_1st': 6}
