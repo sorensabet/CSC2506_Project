@@ -71,7 +71,7 @@ def makefile(all_notes, savedir=None, filename=None):
 if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
-    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
+    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI/'
     
     if (os.path.exists(savedir)):
         shutil.rmtree(savedir)
@@ -79,20 +79,20 @@ if __name__ == '__main__':
     
     GENERATE_SCALES = False
     GENERATE_TRIADS = False
-    GENERATE_SEVENTHS = False
+    GENERATE_SEVENTHS = True
     GENERATE_MEL_1 = False
     GENERATE_MEL_2 = False
     GENERATE_CHORD_PROG_1 = False   # MAJ/MIN: C, A, F, G (Also add broken, solid versions)
     GENERATE_CHORD_PROG_2 = False   
-    GENERATE_MEL_TWINKLE = True
+    GENERATE_MEL_TWINKLE = False
     GENERATE_MEL_HAPPYBDAY = False
     
     
     num_octaves_scale = 4
     num_octaves_chord = 4
     num_octaves_sevenths = 4
-    key_range = range(36,48)
-    dec_key_range = range(96, 84, -1)
+    key_range = range(36,37)
+    dec_key_range = range(96, 95, -1)
     note_lengths = {'32nd': 0.25, 'dot_32nd': 0.375, 
                     '16th': 0.5,  'dot_16th': 0.75,
                     '4th': 1,     'dot_4th': 1.5, 
@@ -388,8 +388,8 @@ if __name__ == '__main__':
                     third_note = second_note + chords[chord][(c+1)%3]
                     for octave in range(num_octaves_chord):
                         # Solid
-                        all_notes += add_chord(notes=[note + 12*octave, second_note + 12*octave, third_note + 12*octave, note + 12*(1+octave)], start_beat=c+3*octave, length_in_beats=0.5)
-                        all_notes += add_chord(notes=[note + 12*(octave-1), second_note + 12*(octave-1), third_note + 12*(octave-1), note + 12*octave], start_beat=c+3*octave, length_in_beats=0.5)
+                        # all_notes += add_chord(notes=[note + 12*octave, second_note + 12*octave, third_note + 12*octave, note + 12*(1+octave)], start_beat=c+3*octave, length_in_beats=0.5)
+                        # all_notes += add_chord(notes=[note + 12*(octave-1), second_note + 12*(octave-1), third_note + 12*(octave-1), note + 12*octave], start_beat=c+3*octave, length_in_beats=0.5)
 
                         # Broken
                         all_notes_broken += add_note(note=note + 12*octave, start_beat=4*c+12*octave, length_in_beats=0.5) # Right hand
@@ -541,85 +541,85 @@ if __name__ == '__main__':
         chords_seventh_dec = {"dominant_seventh_chord_dec": dominant_seventh_chord_semitones_dec, "diminished_seventh_chord_dec": diminished_seventh_chord_semitones_dec}
 
         # Write ascending chord sevenths for all keys
-        for chord in chords_seventh:
-            for key in key_range: # Iterate over all keys
-                all_notes = []
-                all_notes_broken = []
-                all_notes_alternating = []
-                all_notes_arpeggios = []
-                all_notes_lh_alternating = []
-                all_notes_alternating_lh_alternating = []
-                all_notes_arpeggios_lh_alternating = []
-                note = key
-                for c, i in enumerate(chords_seventh[chord]): # Iterate over all starting keys of the chords
-                    second_note = note + chords_seventh[chord][c%4]
-                    third_note = second_note + chords_seventh[chord][(c+1)%4]
-                    fourth_note = third_note + chords_seventh[chord][(c+2)%4]
-                    for octave in range(num_octaves_chord):
-                        # Solid
-                        all_notes += add_chord(notes=[note + 12*octave, second_note + 12*octave, third_note + 12*octave, fourth_note + 12*octave], start_beat=c+4*octave, length_in_beats=0.5)
-                        all_notes += add_chord(notes=[note + 12*(octave-1), second_note + 12*(octave-1), third_note + 12*(octave-1), fourth_note + 12*(octave-1)], start_beat=c+4*octave, length_in_beats=0.5)
+        # for chord in chords_seventh:
+        #     for key in key_range: # Iterate over all keys
+        #         all_notes = []
+        #         all_notes_broken = []
+        #         all_notes_alternating = []
+        #         all_notes_arpeggios = []
+        #         all_notes_lh_alternating = []
+        #         all_notes_alternating_lh_alternating = []
+        #         all_notes_arpeggios_lh_alternating = []
+        #         note = key
+        #         for c, i in enumerate(chords_seventh[chord]): # Iterate over all starting keys of the chords
+        #             second_note = note + chords_seventh[chord][c%4]
+        #             third_note = second_note + chords_seventh[chord][(c+1)%4]
+        #             fourth_note = third_note + chords_seventh[chord][(c+2)%4]
+        #             for octave in range(num_octaves_chord):
+        #                 # Solid
+        #                 all_notes += add_chord(notes=[note + 12*octave, second_note + 12*octave, third_note + 12*octave, fourth_note + 12*octave], start_beat=c+4*octave, length_in_beats=0.5)
+        #                 all_notes += add_chord(notes=[note + 12*(octave-1), second_note + 12*(octave-1), third_note + 12*(octave-1), fourth_note + 12*(octave-1)], start_beat=c+4*octave, length_in_beats=0.5)
 
-                        # Broken
-                        all_notes_broken += add_note(note=note + 12*octave, start_beat=4*c+16*octave, length_in_beats=0.5) # Right hand
-                        all_notes_broken += add_note(note=second_note + 12*octave, start_beat=4*c+1+16*octave, length_in_beats=0.5)
-                        all_notes_broken += add_note(note=third_note + 12*octave, start_beat=4*c+2+16*octave, length_in_beats=0.5)
-                        all_notes_broken += add_note(note=fourth_note + 12*octave, start_beat=4*c+3+16*octave, length_in_beats=0.5)
+        #                 # Broken
+        #                 all_notes_broken += add_note(note=note + 12*octave, start_beat=4*c+16*octave, length_in_beats=0.5) # Right hand
+        #                 all_notes_broken += add_note(note=second_note + 12*octave, start_beat=4*c+1+16*octave, length_in_beats=0.5)
+        #                 all_notes_broken += add_note(note=third_note + 12*octave, start_beat=4*c+2+16*octave, length_in_beats=0.5)
+        #                 all_notes_broken += add_note(note=fourth_note + 12*octave, start_beat=4*c+3+16*octave, length_in_beats=0.5)
 
-                        all_notes_broken += add_note(note=note + 12*(octave-1), start_beat=4*c+16*octave, length_in_beats=0.5) # Left hand
-                        all_notes_broken += add_note(note=second_note + 12*(octave-1), start_beat=4*c+1+16*octave, length_in_beats=0.5)
-                        all_notes_broken += add_note(note=third_note + 12*(octave-1), start_beat=4*c+2+16*octave, length_in_beats=0.5)
-                        all_notes_broken += add_note(note=fourth_note + 12*(octave-1), start_beat=4*c+3+16*octave, length_in_beats=0.5)
+        #                 all_notes_broken += add_note(note=note + 12*(octave-1), start_beat=4*c+16*octave, length_in_beats=0.5) # Left hand
+        #                 all_notes_broken += add_note(note=second_note + 12*(octave-1), start_beat=4*c+1+16*octave, length_in_beats=0.5)
+        #                 all_notes_broken += add_note(note=third_note + 12*(octave-1), start_beat=4*c+2+16*octave, length_in_beats=0.5)
+        #                 all_notes_broken += add_note(note=fourth_note + 12*(octave-1), start_beat=4*c+3+16*octave, length_in_beats=0.5)
 
-                        # Alternating
-                        all_notes_alternating += add_note(note=note + 12*octave, start_beat=4*c+16*octave, length_in_beats=0.5) # Right hand
-                        all_notes_alternating += add_note(note=second_note + 12*octave, start_beat=4*c+2+16*octave, length_in_beats=0.5)
-                        all_notes_alternating += add_note(note=third_note + 12*octave, start_beat=4*c+1+16*octave, length_in_beats=0.5)
-                        all_notes_alternating += add_note(note=fourth_note + 12*octave, start_beat=4*c+3+16*octave, length_in_beats=0.5)
+        #                 # Alternating
+        #                 all_notes_alternating += add_note(note=note + 12*octave, start_beat=4*c+16*octave, length_in_beats=0.5) # Right hand
+        #                 all_notes_alternating += add_note(note=second_note + 12*octave, start_beat=4*c+2+16*octave, length_in_beats=0.5)
+        #                 all_notes_alternating += add_note(note=third_note + 12*octave, start_beat=4*c+1+16*octave, length_in_beats=0.5)
+        #                 all_notes_alternating += add_note(note=fourth_note + 12*octave, start_beat=4*c+3+16*octave, length_in_beats=0.5)
 
-                        all_notes_alternating += add_note(note=note + 12*(octave-1), start_beat=4*c+16*octave, length_in_beats=0.5) # Left hand
-                        all_notes_alternating += add_note(note=second_note + 12*(octave-1), start_beat=4*c+2+16*octave, length_in_beats=0.5)
-                        all_notes_alternating += add_note(note=third_note + 12*(octave-1), start_beat=4*c+1+16*octave, length_in_beats=0.5)
-                        all_notes_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=4*c+3+16*octave, length_in_beats=0.5)
+        #                 all_notes_alternating += add_note(note=note + 12*(octave-1), start_beat=4*c+16*octave, length_in_beats=0.5) # Left hand
+        #                 all_notes_alternating += add_note(note=second_note + 12*(octave-1), start_beat=4*c+2+16*octave, length_in_beats=0.5)
+        #                 all_notes_alternating += add_note(note=third_note + 12*(octave-1), start_beat=4*c+1+16*octave, length_in_beats=0.5)
+        #                 all_notes_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=4*c+3+16*octave, length_in_beats=0.5)
 
-                        # Arpeggios
-                        all_notes_arpeggios += add_note(note=note + 12*octave, start_beat=c+4*octave, length_in_beats=0.5)
-                        all_notes_arpeggios += add_note(note=note + 12*(octave-1), start_beat=c+4*octave, length_in_beats=0.5)
+        #                 # Arpeggios
+        #                 all_notes_arpeggios += add_note(note=note + 12*octave, start_beat=c+4*octave, length_in_beats=0.5)
+        #                 all_notes_arpeggios += add_note(note=note + 12*(octave-1), start_beat=c+4*octave, length_in_beats=0.5)
 
-                        # Left Right Alternating
-                        all_notes_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(4*c+16*octave)+1, length_in_beats=0.5) # Right hand
-                        all_notes_lh_alternating += add_note(note=second_note + 12*octave, start_beat=2*(4*c+1+16*octave)+1, length_in_beats=0.5)
-                        all_notes_lh_alternating += add_note(note=third_note + 12*octave, start_beat=2*(4*c+2+16*octave)+1, length_in_beats=0.5)
-                        all_notes_lh_alternating += add_note(note=fourth_note + 12*octave, start_beat=2*(4*c+3+16*octave)+1, length_in_beats=0.5)
+        #                 # Left Right Alternating
+        #                 all_notes_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(4*c+16*octave)+1, length_in_beats=0.5) # Right hand
+        #                 all_notes_lh_alternating += add_note(note=second_note + 12*octave, start_beat=2*(4*c+1+16*octave)+1, length_in_beats=0.5)
+        #                 all_notes_lh_alternating += add_note(note=third_note + 12*octave, start_beat=2*(4*c+2+16*octave)+1, length_in_beats=0.5)
+        #                 all_notes_lh_alternating += add_note(note=fourth_note + 12*octave, start_beat=2*(4*c+3+16*octave)+1, length_in_beats=0.5)
 
-                        all_notes_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(4*c+16*octave), length_in_beats=0.5) # Left hand
-                        all_notes_lh_alternating += add_note(note=second_note + 12*(octave-1), start_beat=2*(4*c+1+16*octave), length_in_beats=0.5)
-                        all_notes_lh_alternating += add_note(note=third_note + 12*(octave-1), start_beat=2*(4*c+2+16*octave), length_in_beats=0.5)
-                        all_notes_lh_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=2*(4*c+3+16*octave), length_in_beats=0.5)
+        #                 all_notes_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(4*c+16*octave), length_in_beats=0.5) # Left hand
+        #                 all_notes_lh_alternating += add_note(note=second_note + 12*(octave-1), start_beat=2*(4*c+1+16*octave), length_in_beats=0.5)
+        #                 all_notes_lh_alternating += add_note(note=third_note + 12*(octave-1), start_beat=2*(4*c+2+16*octave), length_in_beats=0.5)
+        #                 all_notes_lh_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=2*(4*c+3+16*octave), length_in_beats=0.5)
 
-                        # Alternating Left Right Alternating
-                        all_notes_alternating_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(4*c+16*octave)+1, length_in_beats=0.5) # Right hand
-                        all_notes_alternating_lh_alternating += add_note(note=second_note + 12*octave, start_beat=2*(4*c+2+16*octave)+1, length_in_beats=0.5)
-                        all_notes_alternating_lh_alternating += add_note(note=third_note + 12*octave, start_beat=2*(4*c+1+16*octave)+1, length_in_beats=0.5)
-                        all_notes_alternating_lh_alternating += add_note(note=fourth_note + 12*octave, start_beat=2*(4*c+3+16*octave)+1, length_in_beats=0.5)
+        #                 #Alternating Left Right Alternating
+        #                 all_notes_alternating_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(4*c+16*octave)+1, length_in_beats=0.5) # Right hand
+        #                 all_notes_alternating_lh_alternating += add_note(note=second_note + 12*octave, start_beat=2*(4*c+2+16*octave)+1, length_in_beats=0.5)
+        #                 all_notes_alternating_lh_alternating += add_note(note=third_note + 12*octave, start_beat=2*(4*c+1+16*octave)+1, length_in_beats=0.5)
+        #                 all_notes_alternating_lh_alternating += add_note(note=fourth_note + 12*octave, start_beat=2*(4*c+3+16*octave)+1, length_in_beats=0.5)
 
-                        all_notes_alternating_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(4*c+16*octave), length_in_beats=0.5) # Left hand
-                        all_notes_alternating_lh_alternating += add_note(note=second_note + 12*(octave-1), start_beat=2*(4*c+2+16*octave), length_in_beats=0.5)
-                        all_notes_alternating_lh_alternating += add_note(note=third_note + 12*(octave-1), start_beat=2*(4*c+1+16*octave), length_in_beats=0.5)
-                        all_notes_alternating_lh_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=2*(4*c+3+16*octave), length_in_beats=0.5)
+        #                 all_notes_alternating_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(4*c+16*octave), length_in_beats=0.5) # Left hand
+        #                 all_notes_alternating_lh_alternating += add_note(note=second_note + 12*(octave-1), start_beat=2*(4*c+2+16*octave), length_in_beats=0.5)
+        #                 all_notes_alternating_lh_alternating += add_note(note=third_note + 12*(octave-1), start_beat=2*(4*c+1+16*octave), length_in_beats=0.5)
+        #                 all_notes_alternating_lh_alternating += add_note(note=fourth_note + 12*(octave-1), start_beat=2*(4*c+3+16*octave), length_in_beats=0.5)
 
-                        # Arpeggios Left Right Alternating
-                        all_notes_arpeggios_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(c+4*octave)+1, length_in_beats=0.5)
-                        all_notes_arpeggios_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(c+4*octave), length_in_beats=0.5)
+        #                 #Arpeggios Left Right Alternating
+        #                 all_notes_arpeggios_lh_alternating += add_note(note=note + 12*octave, start_beat=2*(c+4*octave)+1, length_in_beats=0.5)
+        #                 all_notes_arpeggios_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=2*(c+4*octave), length_in_beats=0.5)
 
-                    note += i
-                makefile(all_notes, savedir, '{}_{}.mid'.format(chord, key))
-                makefile(all_notes_broken, savedir, '{}_{}_broken.mid'.format(chord, key))
-                makefile(all_notes_alternating, savedir, '{}_{}_alternating.mid'.format(chord, key))
-                makefile(all_notes_broken, savedir, '{}_{}_arpeggio.mid'.format(chord, key))
-                makefile(all_notes_lh_alternating, savedir, '{}_{}_lh_alternating.mid'.format(chord, key))
-                makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_lh_alternating_alternating.mid'.format(chord, key))
-                makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_lh_arpeggios_alternating.mid'.format(chord, key))
+        #             note += i
+        #         # makefile(all_notes, savedir, '{}_{}.mid'.format(chord, key))
+        #         makefile(all_notes_broken, savedir, '{}_{}_broken.mid'.format(chord, key))
+        #         makefile(all_notes_alternating, savedir, '{}_{}_alternating.mid'.format(chord, key))
+        #         makefile(all_notes_arpeggios, savedir, '{}_{}_arpeggio.mid'.format(chord, key))
+        #         makefile(all_notes_lh_alternating, savedir, '{}_{}_lh_alternating.mid'.format(chord, key))
+        #         makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_lh_alternating_alternating.mid'.format(chord, key))
+        #         makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_lh_arpeggios_alternating.mid'.format(chord, key))
 
         # Write descending chord sevenths for all keys
         for chord in chords_seventh_dec:
@@ -638,8 +638,10 @@ if __name__ == '__main__':
                     fourth_note = third_note + chords_seventh_dec[chord][(c+2)%4]
                     for octave in range(num_octaves_chord):
                         # Solid
-                        all_notes += add_chord(notes=[note - 12*octave, second_note - 12*octave, third_note - 12*octave, fourth_note - 12*octave], start_beat=c+4*octave, length_in_beats=0.5)
-                        all_notes += add_chord(notes=[note - 12*(octave+1), second_note - 12*(octave+1), third_note - 12*(octave+1), fourth_note - 12*(octave+1)], start_beat=c+4*octave, length_in_beats=0.5)
+                        all_notes += add_chord(notes=[note - 12*octave, second_note - 12*octave, third_note - 12*octave, fourth_note - 12*octave], 
+                                               start_beat=c+4*octave, length_in_beats=0.5)
+                        all_notes += add_chord(notes=[note - 12*(octave+1), second_note - 12*(octave+1), third_note - 12*(octave+1), fourth_note - 12*(octave+1)], 
+                                               start_beat=c+4*octave, length_in_beats=0.5)
 
                         # Broken
                         all_notes_broken += add_note(note=note - 12*octave, start_beat=4*c+16*octave, length_in_beats=0.5) # Right hand
