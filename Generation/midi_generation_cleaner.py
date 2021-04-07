@@ -1,5 +1,6 @@
 import os 
 import sys
+import math
 import shutil
 import numpy as np
 import pandas as pd
@@ -36,12 +37,72 @@ def makefile(all_notes, savedir=None, filename=None):
     
     df = pd.DataFrame.from_records(all_notes)                                  # Assemble dataframe from list of dictionaries
     df.sort_values(by=['start_beat'], inplace=True)
+    df['bar'] = (df['start_beat']/4).astype(int)
+    df['segment'] = (df['bar']/4).astype(int)
+    df['bar'] += 1 # Switch from 0 index to 1 index
+    df_orig = df.copy()    
+    num_bars = df['bar'].max()
+    multiple_4_bars = num_bars % 4
+    unq_start_beats = sorted(df['start_beat'].unique())
+    beat_length = unq_start_beats[1] - unq_start_beats[0]
+    
+    # Make sure all segments are exactly 4 bars 
+    # If shorter, duplicate until we have at least 4 bars 
+    # If longer, duplicate so we have enough 4 bar segments, then cut 
+    
+    if (multiple_4_bars != 0 and num_bars <4): 
+        # Find how many beats of content there currently are 
+        # Find out how many beats I need to add 
+        # Loop over the dataframe and duplicate it until I get enough beats 
+        max_beat = unq_start_beats[-1]
+        num_iters = math.ceil((16 - beat_length)/max_beat) # Figure out how many times we need to copy this 
+        
+        new_dfs = [df]
+        for i in range(1, num_iters): 
+            tdf = df.copy()
+            tdf['start_beat'] += i*max_beat + beat_length
+            new_dfs.append(tdf)
+        df = pd.concat(new_dfs)
+        df['bar'] = (df['start_beat']/4).astype(int)
+        df['segment'] = (df['bar']/4).astype(int)
+        df['bar'] += 1 # Switch from 0 index to 1 index
+        df = df.loc[df['segment'] == 0]
+        df.reset_index(drop=True, inplace=True)
+        df['MIDI_order'] = df.index
+
+    
+    if (multiple_4_bars != 0 and num_bars >4):       
+        dupl = df.copy()
+        dupl['start_beat'] += df['start_beat'].max() + beat_length # Start duplicated notes on the next beat
+        df = pd.concat([df, dupl])
+        df['bar'] = (df['start_beat']/4).astype(int)
+        df['segment'] = (df['bar']/4).astype(int)
+        df['bar'] += 1 # Switch from 0 index to 1 index
+        df = df.loc[df['segment'] <= int(num_bars/4)]    
+        df['MIDI_order'] = df.index
+
+    # Removing last n occurences of note_on commands where 
+    # n is the difference between # of note_on commands and note_off commands in dataframe
+    # (Prevents extra note_on's with no note_off command as a result of extending/shortening to 4-bar segments)
+    df['note_type_val'] = np.where(df['type'] == 'note_on', 1, -1)
+    df['note_type_sum'] = df['note_type_val'].cumsum()
+    num_noteon_to_remove = df['note_type_sum'].iloc[-1]
+    
+    note_on_idxs = list(df.loc[df['type'] == 'note_on'].index)
+    note_on_idxs = note_on_idxs[:len(note_on_idxs) - num_noteon_to_remove]
+    note_off_idxs = list(df.loc[df['type'] == 'note_off'].index)
+    all_idxs = note_on_idxs + note_off_idxs
+    df = df.iloc[all_idxs]
+    df.sort_values(by=['MIDI_order'], inplace=True)
+
     df['ctime'] = df['start_beat']*480                                         # Use 480 ticks per beat 
     df['time'] = df['ctime'] - df['ctime'].shift(1)                            # MIDI commands are sequential, we need to go from cumulative time to time between events
     df = df[['type', 'note', 'time', 'start_beat', 'ctime']].fillna(0)
     df = df.astype({'type': 'category', 'time': int, 
                     'start_beat': float, 'ctime': float})
     df['velocity'] = np.where(df['type'] == 'note_on', 64, 0)
+    
+    
         
     # Create the track specific MIDI file 
     mid = MidiFile(ticks_per_beat=480, type=0)
@@ -722,19 +783,19 @@ if __name__ == '__main__':
         print('Cleared directory!')
     os.mkdir(savedir)
     
-    GENERATE_SCALES = False             # VERIFIED (8*(54 asc keys +47 desc keys))*10 note lengths = 8080 files 
-    GENERATE_TRIADS = False             # VERIFIED (14*(54 asc keys + 47 desc keys))*10 note lengths = 14,140 files 
-    GENERATE_SEVENTHS = False           # VERIFIED (14*(54 asc keys + 47 desc keys))*10 note lengths = 14,140 files 
-    GENERATE_MEL_1 = False              # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files  
-    GENERATE_MEL_2 = False              # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
-    GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
-    GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
-    GENERATE_MEL_TWINKLE = True         # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
-    GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(54 asc keys))*10 note lenghts = 1080 files
+    GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*9 note lengths = 5184 files
+    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files
+    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files 
+    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files  
+    GENERATE_MEL_2 = False              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_MEL_TWINKLE = False         # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
     
-    # Total Expected Number of Files: 42,840
-    # Number of major files: 2020 + 7070*2 + 540*6 = 19,400 Major Files 
-    # Number of minor files: 6060 + 7070*2 + 540*6 = 23,440 Minor Files 
+    # Total Expected Number of Files: 28,944 files
+    # Number of major files: 1296 + 4536*2 + 468*6 = 13,176 Major Files 
+    # Number of minor files: 3888 + 4536*2 + 468*6 = 15,768 Minor Files 
     
     # More minors because of harmonic, melodic, and minor 
     #    Also, does diminished get considered as a minor? 
@@ -746,19 +807,18 @@ if __name__ == '__main__':
     num_octaves_scale = 4
     num_octaves_chord = 4
     num_octaves_sevenths = 4
-    key_range = range(19, 73) # Min: 19, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4)
-    key_range = range(36, 37)
-    dec_key_range = range(115, 68, -1) # Max: 115, Min: 44 (actually 45 but range ignores last value)
-    #dec_key_range = range(45, 115)
-    nls = {'32nd': 0.125, 'dot_32nd': 0.1875, 
-           '16th': 0.25,  'dot_16th': 0.375,
+    key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
+    key_range = range(60,61)
+    dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
+    dec_key_range = range(45, 45)
+    nls = {'16th': 0.25,  
            '8th': 0.5,   'dot_8th': 0.75,
            '4th': 1,     'dot_4th': 1.5, 
            '2nd': 2,     'dot_2nd': 3, 
            '1st': 4,     'dot_1st': 6}
-    nls={'16th': 0.5}
-    LROffset = {} 
-        
+    #nls = {'16th': 0.25}
+    nls = {'16th': 0.125}    
+    
     # Combining outer loops for efficiency
     for key in key_range: 
         print('Key: %d' % key)
@@ -778,9 +838,9 @@ if __name__ == '__main__':
     for key in dec_key_range: 
         print('Dec Key: %d' % key)
         for nl in nls.keys(): 
-            # gen_dec_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale)
-            # gen_dec_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale)
-            # gen_sevenths_dec(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale)
+            gen_dec_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale)
+            gen_dec_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale)
+            gen_sevenths_dec(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale)
             pass
 
 
