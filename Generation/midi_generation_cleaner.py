@@ -10,6 +10,8 @@ import pretty_midi
 import pypianoroll
 import matplotlib.pyplot as plt
 
+np.random.seed(0)
+
 def add_note(note, start_beat, length_in_beats):
     """
         note:               MIDI note number, from 0-127
@@ -183,9 +185,7 @@ def makefile(all_notes, savedir=None, filename=None):
                                     end=float(x[4]))
             piano.notes.append(note)
         pretty_mid.instruments.append(piano)
-        pretty_mid.write(savedir + '/' + filename + '_' + str(s) + '.mid')
-        # print('Generated pretty_midi file!')
-        # print(savedir + '/' + 'PRETTYMIDI_' + filename + '_' + str(s) + '.mid')
+
         
         # Convert pretty_midi to pypianoroll to get npy array 
         multitrack = pypianoroll.from_pretty_midi(pretty_mid)
@@ -204,9 +204,23 @@ def makefile(all_notes, savedir=None, filename=None):
         # Based on the dimensions of the array, I will pad zeros on the right side until it has 64 steps 
 
         
-        # Save the npy file to the same location as the MIDI file 
-        np.save(savedir + '/' + filename + '_' + str(s) + '.npy', pianoroll)
-
+        # Save the MIDDI and NPY file to appropriate TRAIN/TEST folder 
+        # Assume 80/20 train test split 
+        
+        if (np.random.uniform(0,1) <= 0.8):
+            if (('major' in filename) or ('dominant' in filename)):
+                pretty_mid.write(savedir + '/train/MIDI/major/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/train/NPY/major' + filename + '_' + str(s) + '.npy', pianoroll)
+            else:    
+                pretty_mid.write(savedir + '/train/MIDI/minor' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/train/NPY/minor' + filename + '_' + str(s) + '.npy', pianoroll)
+        else:
+            if (('major' in filename) or ('dominant' in filename)):
+                pretty_mid.write(savedir + '/test/MIDI/major/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/test/NPY/major/' + filename + '_' + str(s) + '.npy', pianoroll)
+            else:
+                pretty_mid.write(savedir + '/test/MIDI/minor/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/test/NPY/minor/' + filename + '_' + str(s) + '.npy', pianoroll)
         return None
 
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
@@ -856,25 +870,46 @@ if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
     savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
+    train_dir = savedir + '/train'
+    train_dir_mid = train_dir + '/MIDI'
+    train_dir_mid_major = train_dir_mid + '/major'
+    train_dir_mid_minor = train_dir_mid + '/minor'
+    train_dir_npy = train_dir + '/NPY'
+    train_dir_npy_major = train_dir_npy + '/major'
+    train_dir_npy_minor = train_dir_npy + '/minor'
+
+    test_dir = savedir + '/test'
+    test_dir_mid = test_dir + '/MIDI'
+    test_dir_mid_major = test_dir_mid + '/major'
+    test_dir_mid_minor = test_dir_mid + '/minor'
+    test_dir_npy = test_dir + '/NPY'
+    test_dir_npy_major = test_dir_npy + '/major'
+    test_dir_npy_minor = test_dir_npy + '/minor'
+    
+    dirs = [savedir, train_dir, train_dir_mid, train_dir_mid_major,
+            train_dir_mid_minor, train_dir_npy, train_dir_npy_major,
+            train_dir_npy_minor, test_dir, test_dir_mid, test_dir_mid_major, 
+            test_dir_mid_minor, test_dir_npy, test_dir_npy_major, test_dir_npy_minor]
+    
+    # Use numpy random number generation + seed for reproducible train test split 
+    np.random.seed(0)
     
     if (os.path.exists(savedir)):
         shutil.rmtree(savedir)
         print('Cleared directory!')
-    os.mkdir(savedir)
+    null = [os.mkdir(d) for d in dirs]
     
-    GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*8 note lengths = 4608 files
-    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*8 note lengths = 9,072 files
-    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*8 note lengths = 9,072 files 
-    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files  
-    GENERATE_MEL_2 = False              # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
-    GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
-    GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
-    GENERATE_MEL_TWINKLE = False         # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
-    GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
+    GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*7 note lengths = 4,032 files
+    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files
+    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files 
+    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*7*6 note lenghts = 4368 files  
+    GENERATE_MEL_2 = False              
+    GENERATE_CHORD_PROG_1 = False       
+    GENERATE_CHORD_PROG_2 = False       
+    GENERATE_MEL_TWINKLE = False         
+    GENERATE_MEL_HAPPYBDAY = False       
     
     # Total Expected Number of Files: 28,944 files
-    # Number of major files: 1296 + 4536*2 + 468*6 = 13,176 Major Files 
-    # Number of minor files: 3888 + 4536*2 + 468*6 = 15,768 Minor Files 
     
     # More minors because of harmonic, melodic, and minor 
     #    Also, does diminished get considered as a minor? 
@@ -886,39 +921,41 @@ if __name__ == '__main__':
     num_octaves_scale = 4
     num_octaves_chord = 4
     num_octaves_sevenths = 4
-    #key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
-    key_range = range(60,61)
-    #dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
-    dec_key_range = range(88, 88, -1)
+    key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
+    dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
     nls = {'16th': 0.25,  
-           '8th': 0.5,   'dot_8th': 0.75,
-           '4th': 1,     'dot_4th': 1.5, 
-           '2nd': 2,     'dot_2nd': 3, 
+           '8th': 0.5,   
+           'd8th': 0.75,
+           '4th': 1,     
+           '2nd': 2,     
            '1st': 4}
-    nls = {'16th': 0.25}
     
     # Combining outer loops for efficiency
+    
+    num_files_generated = 0
     for key in tqdm(key_range): 
         print('Key: %d' % key)
-        for nl in tqdm(nls.keys()):             
-            gen_chord_prog_1(GENERATE_CHORD_PROG_1, savedir, key, nl, nls[nl])
-            gen_chord_prog_2(GENERATE_CHORD_PROG_2, savedir, key, nl, nls[nl])
-            gen_mel_1(GENERATE_MEL_1, savedir, key, nl, nls[nl])
-            gen_mel_2(GENERATE_MEL_2, savedir, key, nl, nls[nl])
-            gen_mel_twinkle(GENERATE_MEL_TWINKLE, savedir, key, nl, nls[nl])
-            gen_mel_happybday(GENERATE_MEL_HAPPYBDAY, savedir, key, nl, nls[nl])
-            gen_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale)
-            gen_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale)
-            gen_sevenths(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale)
-            pass
-            
+        for nl in nls.keys():             
+            gen_chord_prog_1(GENERATE_CHORD_PROG_1, savedir, key, nl, nls[nl]) # 2 files
+            gen_chord_prog_2(GENERATE_CHORD_PROG_2, savedir, key, nl, nls[nl]) # 2 files
+            gen_mel_1(GENERATE_MEL_1, savedir, key, nl, nls[nl]) # 2 files
+            gen_mel_2(GENERATE_MEL_2, savedir, key, nl, nls[nl]) # 2 files
+            gen_mel_twinkle(GENERATE_MEL_TWINKLE, savedir, key, nl, nls[nl]) # 2 files
+            gen_mel_happybday(GENERATE_MEL_HAPPYBDAY, savedir, key, nl, nls[nl]) # 2 files
+            gen_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale) # 8 files
+            gen_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale) # 14 files
+            gen_sevenths(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale) # 14 fiiles
+            num_files_generated += (2*6 + 8 + 2*14)
+            print('\nNum files generated: %d' % num_files_generated)
+    
     # For descending cases 
     for key in tqdm(dec_key_range): 
         print('Dec Key: %d' % key)
-        for nl in tqdm(nls.keys()): 
+        for nl in nls.keys(): 
             gen_dec_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale)
             gen_dec_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale)
             gen_sevenths_dec(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale)
-            pass
+            num_files_generated += (2*6 + 8 + 2*14)
+            print('\nNum files generated: %d' % num_files_generated)
 
 
