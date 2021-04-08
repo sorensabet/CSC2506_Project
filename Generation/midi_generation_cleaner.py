@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
+from tqdm import tqdm
 
 def add_note(note, start_beat, length_in_beats):
     """
@@ -51,6 +52,8 @@ def makefile(all_notes, savedir=None, filename=None):
     # If longer, duplicate so we have enough 4 bar segments, then cut 
     
     if (multiple_4_bars != 0 and num_bars <4): 
+        #print('Extending Track')
+        
         # Find how many beats of content there currently are 
         # Find out how many beats I need to add 
         # Loop over the dataframe and duplicate it until I get enough beats 
@@ -67,23 +70,42 @@ def makefile(all_notes, savedir=None, filename=None):
         df['segment'] = (df['bar']/4).astype(int)
         df['bar'] += 1 # Switch from 0 index to 1 index
         df = df.loc[df['segment'] == 0]
-        df.reset_index(drop=True, inplace=True)
-        df['MIDI_order'] = df.index
-
-    
-    if (multiple_4_bars != 0 and num_bars >4):       
+    elif (multiple_4_bars != 0 and num_bars >4):       
+        #print('Splitting Track')
         dupl = df.copy()
         dupl['start_beat'] += df['start_beat'].max() + beat_length # Start duplicated notes on the next beat
         df = pd.concat([df, dupl])
         df['bar'] = (df['start_beat']/4).astype(int)
         df['segment'] = (df['bar']/4).astype(int)
         df['bar'] += 1 # Switch from 0 index to 1 index
-        df = df.loc[df['segment'] <= int(num_bars/4)]    
-        df['MIDI_order'] = df.index
+        df = df.loc[df['segment'] <= int(num_bars/4)]  
+        
+        # Need to make sure that note_offs also end at the end of the 4 bars
+        
+    else: 
+        #print('Did not duplicate or split track!')
+        pass
 
     # Removing last n occurences of note_on commands where 
     # n is the difference between # of note_on commands and note_off commands in dataframe
     # (Prevents extra note_on's with no note_off command as a result of extending/shortening to 4-bar segments)
+    
+    # dft = df.loc[(df['type'] == 'note_off')]
+    # dft = dft.loc[dft['start_beat'] <= (dft['segment'])*16 + beat_length]
+    # dft = dft.loc[dft['segment'] > 0]
+    
+    df['start_beat'] = np.where((df['type'] == 'note_off') & 
+                            (df['start_beat'] <= (df['segment']*16 + beat_length)) & 
+                            (df['segment'] > 0), 
+                            (df['segment'])*16 - 0.001,  # Replace with (segment + 1)*16
+                            df['start_beat']) 
+    df['bar'] = (df['start_beat']/4).astype(int)
+    df['segment'] = (df['bar']/4).astype(int)
+    
+    df.sort_values(by=['start_beat'], inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    df['MIDI_order'] = df.index
+        
     df['note_type_val'] = np.where(df['type'] == 'note_on', 1, -1)
     df['note_type_sum'] = df['note_type_val'].cumsum()
     num_noteon_to_remove = df['note_type_sum'].iloc[-1]
@@ -97,38 +119,39 @@ def makefile(all_notes, savedir=None, filename=None):
 
     df['ctime'] = df['start_beat']*480                                         # Use 480 ticks per beat 
     df['time'] = df['ctime'] - df['ctime'].shift(1)                            # MIDI commands are sequential, we need to go from cumulative time to time between events
-    df = df[['type', 'note', 'time', 'start_beat', 'ctime']].fillna(0)
+    df = df[['type', 'note', 'time', 'start_beat', 'ctime', 'segment']].fillna(0)   # Split > 16 bars into longer segments. 
     df = df.astype({'type': 'category', 'time': int, 
                     'start_beat': float, 'ctime': float})
     df['velocity'] = np.where(df['type'] == 'note_on', 64, 0)
     
-    
+    for s in df['segment'].unique(): 
+        sdf = df.loc[df['segment'] == s][['type', 'note', 'time', 'velocity']]
         
-    # Create the track specific MIDI file 
-    mid = MidiFile(ticks_per_beat=480, type=0)
-    midiTrack = MidiTrack()
+        # Create the track specific MIDI file 
+        mid = MidiFile(ticks_per_beat=480, type=0)
+        midiTrack = MidiTrack()
+        
+        # Tempo MIDI Message (Set to 120 BPM)
+        midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
     
-    # Tempo MIDI Message (Set to 120 BPM)
-    midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
+        # Time Signature MIDI Message (Standardize to 120bpm)
+        midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
+                                     clocks_per_click=24, notated_32nd_notes_per_beat=8))
+    
+        # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
+        midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
+        
+        # Individual Messages corresponding to notes 
+        midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[4]), channel=0) for x in sdf.itertuples()]
+        
+        # End of Track MIDI Message
+        midiTrack.append(MetaMessage('end_of_track', time=0))
+        
+        # Append Track to MIDI File
+        mid.tracks.append(midiTrack)
+        
+        mid.save(savedir + '/' + filename + '_' + str(s) + '.mid')
 
-    # Time Signature MIDI Message (Standardize to 120bpm)
-    midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
-                                 clocks_per_click=24, notated_32nd_notes_per_beat=8))
-
-    # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
-    midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
-    
-    # Individual Messages corresponding to notes 
-    midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[6]), channel=0) for x in df.itertuples()]
-    
-    # End of Track MIDI Message
-    midiTrack.append(MetaMessage('end_of_track', time=0))
-    
-    # Append Track to MIDI File
-    mid.tracks.append(midiTrack)
-
-    mid.save(savedir + '/' + filename)
-    return None 
 
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
     if (run == False):
@@ -151,7 +174,7 @@ def gen_chord_prog_1(run, savedir, key, nlk, nl):
             all_notes += add_note(note=note, start_beat=nl*c, length_in_beats=nl) # Right hand
             all_notes += add_note(note=(note-12), start_beat=nl*c, length_in_beats=nl) # Right hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_1.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_1'.format(scale, key, nlk))
     return None 
 
 def gen_chord_prog_2(run, savedir, key, nlk, nl): 
@@ -203,7 +226,7 @@ def gen_chord_prog_2(run, savedir, key, nlk, nl):
             all_notes += add_chord(notes=[note + ch_n for ch_n in i], #RH
                                    start_beat=nl*c, 
                                    length_in_beats=nl)
-        makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_2.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_CHORD_PROG_2'.format(scale, key, nlk))
     return None 
 
 def gen_mel_1(run, savedir, key, nlk, nl):
@@ -235,7 +258,7 @@ def gen_mel_1(run, savedir, key, nlk, nl):
             all_notes += add_note(note=note, start_beat=nl*c, length_in_beats=nl) # Right hand
             all_notes += add_note(note=(note-12), start_beat=nl*c, length_in_beats=nl) # Right hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}_MEL_1.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_MEL_1'.format(scale, key, nlk))
     return None 
 
 def gen_mel_2(run, savedir, key, nlk, nl): 
@@ -265,7 +288,7 @@ def gen_mel_2(run, savedir, key, nlk, nl):
             all_notes += add_note(note=note, start_beat=nl*c, length_in_beats=nl) # Right hand
             all_notes += add_note(note=(note-12), start_beat=nl*c, length_in_beats=nl) # Right hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}_MEL_2.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_MEL_2'.format(scale, key, nlk))
 
 def gen_mel_twinkle(run, savedir, key, nlk, nl): 
     if run == False:
@@ -301,7 +324,7 @@ def gen_mel_twinkle(run, savedir, key, nlk, nl):
             all_notes += add_note(note=note, start_beat=nl*c, length_in_beats=nl) # Right hand
             all_notes += add_note(note=(note-12), start_beat=nl*c, length_in_beats=nl) # Right hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}_MEL_TWINKLE.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_MEL_TWINKLE'.format(scale, key, nlk))
     return None 
 
 def gen_mel_happybday(run, savedir, key, nlk, nl): 
@@ -340,7 +363,7 @@ def gen_mel_happybday(run, savedir, key, nlk, nl):
             all_notes += add_note(note=note, start_beat=nl*c, length_in_beats=nl) # Right hand
             all_notes += add_note(note=(note-12), start_beat=nl*c, length_in_beats=nl) # Right hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}_MEL_HAPPYBDAY.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}_MEL_HAPPYBDAY'.format(scale, key, nlk))
     return None 
 
 def gen_scales(run, savedir, key, nlk, nl, num_octaves_scale):
@@ -368,8 +391,8 @@ def gen_scales(run, savedir, key, nlk, nl, num_octaves_scale):
         all_notes += add_note(note=key + 12*(num_octaves_scale-1), start_beat=(7*num_octaves_scale)*nl, length_in_beats=nl) # Left hand
         all_notes_lh_alternating += add_note(note=key + 12*num_octaves_scale, start_beat=(2*(7*num_octaves_scale) + 1)*nl, length_in_beats=nl) # Right hand
         all_notes_lh_alternating += add_note(note=key + 12*(num_octaves_scale-1), start_beat=(2*(7*num_octaves_scale))*nl, length_in_beats=nl) # Left hand
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(scale, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(scale, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}'.format(scale, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating'.format(scale, key, nlk))
  
     return None 
 
@@ -401,8 +424,8 @@ def gen_dec_scales(run, savedir, key, nlk, nl, num_octaves_scale):
         all_notes += add_note(note=key - 12*(num_octaves_scale+1), start_beat=(7*num_octaves_scale)*nl, length_in_beats=nl) # Left hand
         all_notes_lh_alternating += add_note(note=key - 12*num_octaves_scale, start_beat=(2*(7*num_octaves_scale) + 1)*nl, length_in_beats=0.5) # Right hand
         all_notes_lh_alternating += add_note(note=key - 12*(num_octaves_scale-1), start_beat=(2*(7*num_octaves_scale))*nl, length_in_beats=0.5) # Left hand
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(scale, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(scale, key, nlk))  
+        makefile(all_notes, savedir, '{}_{}_{}'.format(scale, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating'.format(scale, key, nlk))  
     return None 
     
 def gen_triads(run, savedir, key, nlk, nl, num_octaves_scale): 
@@ -487,13 +510,13 @@ def gen_triads(run, savedir, key, nlk, nl, num_octaves_scale):
                 all_notes_arpeggios_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=(2*(c+3*octave))*nl, length_in_beats=nl) # Left hand
 
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(chord, key, nlk))
-        makefile(all_notes_broken, savedir, '{}_{}_{}_broken.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio.mid'.format(chord, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating.mid'.format(chord, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}'.format(chord, key, nlk))
+        makefile(all_notes_broken, savedir, '{}_{}_{}_broken'.format(chord, key, nlk))
+        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio'.format(chord, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.'.format(chord, key, nlk))
+        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating'.format(chord, key, nlk))
     return None 
 
 def gen_dec_triads(run, savedir, key, nlk, nl, num_octaves_scale):
@@ -576,13 +599,13 @@ def gen_dec_triads(run, savedir, key, nlk, nl, num_octaves_scale):
                 all_notes_arpeggios_lh_alternating += add_note(note=note - 12*octave, start_beat=(2*(c+3*octave)+1)*nl, length_in_beats=nl) # Right hand
                 all_notes_arpeggios_lh_alternating += add_note(note=note - 12*(octave+1), start_beat=(2*(c+3*octave))*nl, length_in_beats=nl) # Left hand
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(chord, key, nlk))
-        makefile(all_notes_broken, savedir, '{}_{}_{}_broken.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio.mid'.format(chord, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating.mid'.format(chord, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}'.format(chord, key, nlk))
+        makefile(all_notes_broken, savedir, '{}_{}_{}_broken'.format(chord, key, nlk))
+        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio'.format(chord, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating'.format(chord, key, nlk))
+        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating'.format(chord, key, nlk))
 
     return None 
 
@@ -669,13 +692,13 @@ def gen_sevenths(run, savedir, key, nlk, nl, num_octaves_scale):
                 all_notes_arpeggios_lh_alternating += add_note(note=note + 12*(octave-1), start_beat=(2*(c+4*octave))*nl, length_in_beats=nl)
         
             note += i
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(chord, key, nlk))
-        makefile(all_notes_broken, savedir, '{}_{}_{}_broken.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio.mid'.format(chord, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating.mid'.format(chord, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}'.format(chord, key, nlk))
+        makefile(all_notes_broken, savedir, '{}_{}_{}_broken'.format(chord, key, nlk))
+        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio'.format(chord, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating'.format(chord, key, nlk))
+        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating'.format(chord, key, nlk))
 
     return None 
 
@@ -764,13 +787,13 @@ def gen_sevenths_dec(run, savedir, key, nlk, nl, num_octaves_scale):
                 all_notes_arpeggios_lh_alternating += add_note(note=note - 12*(octave+1), start_beat=(2*(c+4*octave))*nl, length_in_beats=nl)
             note += i
 
-        makefile(all_notes, savedir, '{}_{}_{}.mid'.format(chord, key, nlk))
-        makefile(all_notes_broken, savedir, '{}_{}_{}_broken.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio.mid'.format(chord, key, nlk))
-        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating.mid'.format(chord, key, nlk))
-        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating.mid'.format(chord, key, nlk))
+        makefile(all_notes, savedir, '{}_{}_{}'.format(chord, key, nlk))
+        makefile(all_notes_broken, savedir, '{}_{}_{}_broken'.format(chord, key, nlk))
+        makefile(all_notes_alternating, savedir, '{}_{}_{}_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios, savedir, '{}_{}_{}_arpeggio'.format(chord, key, nlk))
+        makefile(all_notes_lh_alternating, savedir, '{}_{}_{}_lh_alternating'.format(chord, key, nlk))
+        makefile(all_notes_alternating_lh_alternating, savedir, '{}_{}_{}_lh_alternating_alternating'.format(chord, key, nlk))
+        makefile(all_notes_arpeggios_lh_alternating, savedir, '{}_{}_{}_lh_arpeggios_alternating'.format(chord, key, nlk))
     return None 
 
 if __name__ == '__main__':
@@ -784,14 +807,14 @@ if __name__ == '__main__':
     os.mkdir(savedir)
     
     GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*9 note lengths = 5184 files
-    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files
-    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files 
-    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files  
-    GENERATE_MEL_2 = False              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_MEL_TWINKLE = False         # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_TRIADS = True             # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files
+    GENERATE_SEVENTHS = True           # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files 
+    GENERATE_MEL_1 = True              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files  
+    GENERATE_MEL_2 = True              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_CHORD_PROG_1 = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_CHORD_PROG_2 = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_MEL_TWINKLE = True         # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_MEL_HAPPYBDAY = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
     
     # Total Expected Number of Files: 28,944 files
     # Number of major files: 1296 + 4536*2 + 468*6 = 13,176 Major Files 
@@ -808,21 +831,20 @@ if __name__ == '__main__':
     num_octaves_chord = 4
     num_octaves_sevenths = 4
     key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
-    key_range = range(60,61)
+    #key_range = range(60,61)
     dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
-    dec_key_range = range(45, 45)
+    #dec_key_range = range(45, 45)
     nls = {'16th': 0.25,  
            '8th': 0.5,   'dot_8th': 0.75,
            '4th': 1,     'dot_4th': 1.5, 
            '2nd': 2,     'dot_2nd': 3, 
            '1st': 4,     'dot_1st': 6}
-    #nls = {'16th': 0.25}
-    nls = {'16th': 0.125}    
+    #nls = {'4': 3.76}
     
     # Combining outer loops for efficiency
-    for key in key_range: 
+    for key in tqdm(key_range): 
         print('Key: %d' % key)
-        for nl in nls.keys():             
+        for nl in tqdm(nls.keys()):             
             gen_chord_prog_1(GENERATE_CHORD_PROG_1, savedir, key, nl, nls[nl])
             gen_chord_prog_2(GENERATE_CHORD_PROG_2, savedir, key, nl, nls[nl])
             gen_mel_1(GENERATE_MEL_1, savedir, key, nl, nls[nl])
@@ -835,9 +857,9 @@ if __name__ == '__main__':
             pass
             
     # For descending cases 
-    for key in dec_key_range: 
+    for key in tqdm(dec_key_range): 
         print('Dec Key: %d' % key)
-        for nl in nls.keys(): 
+        for nl in tqdm(nls.keys()): 
             gen_dec_scales(GENERATE_SCALES, savedir, key, nl, nls[nl], num_octaves_scale)
             gen_dec_triads(GENERATE_TRIADS, savedir, key, nl, nls[nl], num_octaves_scale)
             gen_sevenths_dec(GENERATE_SEVENTHS, savedir, key, nl, nls[nl], num_octaves_scale)
