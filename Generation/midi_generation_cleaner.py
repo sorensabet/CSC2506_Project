@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
 from tqdm import tqdm
+import pretty_midi
+import pypianoroll
+import matplotlib.pyplot as plt
 
 def add_note(note, start_beat, length_in_beats):
     """
@@ -125,33 +128,86 @@ def makefile(all_notes, savedir=None, filename=None):
     df['velocity'] = np.where(df['type'] == 'note_on', 64, 0)
     
     for s in df['segment'].unique(): 
-        sdf = df.loc[df['segment'] == s][['type', 'note', 'time', 'velocity']]
+        sdf = df.loc[df['segment'] == s][['type', 'note', 'time', 'velocity', 'start_beat']]
         
-        # Create the track specific MIDI file 
-        mid = MidiFile(ticks_per_beat=480, type=0)
-        midiTrack = MidiTrack()
         
-        # Tempo MIDI Message (Set to 120 BPM)
-        midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
+        #### USING MIDO TO GENERATE MIDI FILES #### 
+        # # Create the track specific MIDI file 
+        # mid = MidiFile(ticks_per_beat=480, type=0)
+        # midiTrack = MidiTrack()
+        
+        # # Tempo MIDI Message (Set to 120 BPM)
+        # midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
     
-        # Time Signature MIDI Message (Standardize to 120bpm)
-        midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
-                                     clocks_per_click=24, notated_32nd_notes_per_beat=8))
+        # # Time Signature MIDI Message (Standardize to 120bpm)
+        # midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
+        #                              clocks_per_click=24, notated_32nd_notes_per_beat=8))
     
-        # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
-        midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
+        # # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
+        # midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
         
-        # Individual Messages corresponding to notes 
-        midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[4]), channel=0) for x in sdf.itertuples()]
+        # # Individual Messages corresponding to notes 
+        # midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[4]), channel=0) for x in sdf.itertuples()]
         
-        # End of Track MIDI Message
-        midiTrack.append(MetaMessage('end_of_track', time=0))
+        # # End of Track MIDI Message
+        # midiTrack.append(MetaMessage('end_of_track', time=0))
         
-        # Append Track to MIDI File
-        mid.tracks.append(midiTrack)
+        # # Append Track to MIDI File
+        # mid.tracks.append(midiTrack)
         
-        mid.save(savedir + '/' + filename + '_' + str(s) + '.mid')
+        # mid.save(savedir + '/' + filename + '_' + str(s) + '.mid')
+        # # print('Generated MIDO file!')
+        # # print(savedir + '/' + filename + '_' + str(s) + '.mid')
 
+        
+        #### USING PRETTY_MIDI + PYPIANOROLL TO GENERATE MIDI + NPY FILES
+        sdf['seconds'] = sdf['start_beat']*0.5 # 1 second = 2 beats @ 120 bpm
+        sdf_start = sdf.loc[sdf['type'] == 'note_on'].rename(columns={'seconds': 'start_time(s)'})[['note', 'velocity', 'start_time(s)']].reset_index(drop=True)
+        sdf_end = sdf.loc[sdf['type'] == 'note_off'].rename(columns={'seconds': 'end_time(s)'})[['end_time(s)']].reset_index(drop=True)
+        
+        sdf_prettymidi = sdf_start.merge(sdf_end, left_index=True, right_index=True, how='left')
+        sdf_prettymidi['start_time(s)'] -= sdf_prettymidi['start_time(s)'].min()
+        sdf_prettymidi['end_time(s)'] = sdf_prettymidi['start_time(s)'] + beat_length*0.5
+        sdf_prettymidi['end_time(s)'] = np.where(sdf_prettymidi['end_time(s)'] > 8.0, 8.0, sdf_prettymidi['end_time(s)'])
+        
+        # print(s)
+        # print(filename)
+        # Making a file using pretty_midi instead of MIDO for easier npy file generation 
+        pretty_mid = pretty_midi.PrettyMIDI()
+        piano = pretty_midi.Instrument(program = 1)
+        
+        for x in sdf_prettymidi.itertuples(): 
+            note = pretty_midi.Note(velocity=64, 
+                                    pitch=int(x[1]), 
+                                    start=float(x[3]), 
+                                    end=float(x[4]))
+            piano.notes.append(note)
+        pretty_mid.instruments.append(piano)
+        pretty_mid.write(savedir + '/' + filename + '_' + str(s) + '.mid')
+        # print('Generated pretty_midi file!')
+        # print(savedir + '/' + 'PRETTYMIDI_' + filename + '_' + str(s) + '.mid')
+        
+        # Convert pretty_midi to pypianoroll to get npy array 
+        multitrack = pypianoroll.from_pretty_midi(pretty_mid)
+        pypianoroll.set_resolution(multitrack, 4) # 16th note resolutions, 4 time clicks per beat
+        multitrack.binarize()       
+        multitrack = pypianoroll.set_resolution(multitrack, 4) # 16th note resolutions, 4 time clicks per beat 
+        
+        # CycleGAN repo said they only pitches between C0 and C8 but they said 84 notes which is C1 (4) to C8 (88)
+        # I kept the whole 128 note range but this can be altered by modifying the 3/87 in the line below: 
+        pianoroll = (multitrack.tracks[0].pianoroll*1)#[:,3:87]  
+        pianoroll = np.pad(pianoroll, ((0,64-pianoroll.shape[0]),(0,0))).reshape(64, 128, 1)
+        
+        # The MIDI files are 4 bars, and there is a resolution of 4 timesteps per beat.
+        # Since the MIDI files are 4/4 time, we have a total of 16 beats in the four bars.
+        # Therefore, the npy array will have dimensions of (4*16)*128  = 64*128
+        # Based on the dimensions of the array, I will pad zeros on the right side until it has 64 steps 
+
+        
+        # Save the npy file to the same location as the MIDI file 
+        np.save(savedir + '/' + filename + '_' + str(s) + '.npy', pianoroll)
+
+        return None
 
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
     if (run == False):
@@ -799,22 +855,22 @@ def gen_sevenths_dec(run, savedir, key, nlk, nl, num_octaves_scale):
 if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
-    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI/'
+    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
     
     if (os.path.exists(savedir)):
         shutil.rmtree(savedir)
         print('Cleared directory!')
     os.mkdir(savedir)
     
-    GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*9 note lengths = 5184 files
-    GENERATE_TRIADS = True             # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files
-    GENERATE_SEVENTHS = True           # VERIFIED (14*(52 asc keys + 20 desc keys))*9 note lengths = 9,072 files 
-    GENERATE_MEL_1 = True              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files  
-    GENERATE_MEL_2 = True              # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_CHORD_PROG_1 = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_CHORD_PROG_2 = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_MEL_TWINKLE = True         # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
-    GENERATE_MEL_HAPPYBDAY = True       # VERIFIED (2*(52 asc keys))*9 note lenghts = 936 files
+    GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*8 note lengths = 4608 files
+    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*8 note lengths = 9,072 files
+    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*8 note lengths = 9,072 files 
+    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files  
+    GENERATE_MEL_2 = False              # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
+    GENERATE_CHORD_PROG_1 = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
+    GENERATE_CHORD_PROG_2 = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
+    GENERATE_MEL_TWINKLE = False         # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
+    GENERATE_MEL_HAPPYBDAY = False       # VERIFIED (2*(52 asc keys))*8 note lenghts = 936 files
     
     # Total Expected Number of Files: 28,944 files
     # Number of major files: 1296 + 4536*2 + 468*6 = 13,176 Major Files 
@@ -830,16 +886,16 @@ if __name__ == '__main__':
     num_octaves_scale = 4
     num_octaves_chord = 4
     num_octaves_sevenths = 4
-    key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
-    #key_range = range(60,61)
-    dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
-    #dec_key_range = range(45, 45)
+    #key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
+    key_range = range(60,61)
+    #dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
+    dec_key_range = range(88, 88, -1)
     nls = {'16th': 0.25,  
            '8th': 0.5,   'dot_8th': 0.75,
            '4th': 1,     'dot_4th': 1.5, 
            '2nd': 2,     'dot_2nd': 3, 
-           '1st': 4,     'dot_1st': 6}
-    #nls = {'4': 3.76}
+           '1st': 4}
+    nls = {'16th': 0.25}
     
     # Combining outer loops for efficiency
     for key in tqdm(key_range): 
