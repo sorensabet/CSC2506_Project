@@ -1,0 +1,1 @@
+import midoimport pretty_midiimport pypianorollimport numpy as npimport pandas as pd # Open an npy file to see what it is path = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/CycleGAN Data/CP_C/train/'file = np.load(path + 'classic_piano_train_1.npy')
