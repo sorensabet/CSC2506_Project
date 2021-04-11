@@ -195,8 +195,8 @@ def makefile(all_notes, savedir=None, filename=None):
         
         # CycleGAN repo said they only pitches between C0 and C8 but they said 84 notes which is C1 (4) to C8 (88)
         # I kept the whole 128 note range but this can be altered by modifying the 3/87 in the line below: 
-        pianoroll = (multitrack.tracks[0].pianoroll*1)#[:,3:87]  
-        pianoroll = np.pad(pianoroll, ((0,64-pianoroll.shape[0]),(0,0))).reshape(64, 128, 1)
+        pianoroll = (multitrack.tracks[0].pianoroll*1)[:,3:87]  
+        pianoroll = np.pad(pianoroll, ((0,64-pianoroll.shape[0]),(0,0))).reshape(64, 84, 1)
         
         # The MIDI files are 4 bars, and there is a resolution of 4 timesteps per beat.
         # Since the MIDI files are 4/4 time, we have a total of 16 beats in the four bars.
@@ -209,20 +209,19 @@ def makefile(all_notes, savedir=None, filename=None):
         
         if (np.random.uniform(0,1) <= 0.8):
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir + '/train/MIDI/major/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/train/NPY/major' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir + '/major/train_midi/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/major/train/' + filename + '_' + str(s) + '.npy', pianoroll)
             else:    
-                pretty_mid.write(savedir + '/train/MIDI/minor' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/train/NPY/minor' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir + '/minor/train_midi/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/minor/train/' + filename + '_' + str(s) + '.npy', pianoroll)
         else:
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir + '/test/MIDI/major/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/test/NPY/major/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir + '/major/test_midi/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/major/test/' + filename + '_' + str(s) + '.npy', pianoroll)
             else:
-                pretty_mid.write(savedir + '/test/MIDI/minor/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/test/NPY/minor/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir + '/minor/test_midi/' + filename + '_' + str(s) + '.mid')
+                np.save(savedir + '/minor/test/' + filename + '_' + str(s) + '.npy', pianoroll)
         return None
-
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
     if (run == False):
         return None 
@@ -869,27 +868,24 @@ def gen_sevenths_dec(run, savedir, key, nlk, nl, num_octaves_scale):
 if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
-    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
-    train_dir = savedir + '/train'
-    train_dir_mid = train_dir + '/MIDI'
-    train_dir_mid_major = train_dir_mid + '/major'
-    train_dir_mid_minor = train_dir_mid + '/minor'
-    train_dir_npy = train_dir + '/NPY'
-    train_dir_npy_major = train_dir_npy + '/major'
-    train_dir_npy_minor = train_dir_npy + '/minor'
-
-    test_dir = savedir + '/test'
-    test_dir_mid = test_dir + '/MIDI'
-    test_dir_mid_major = test_dir_mid + '/major'
-    test_dir_mid_minor = test_dir_mid + '/minor'
-    test_dir_npy = test_dir + '/NPY'
-    test_dir_npy_major = test_dir_npy + '/major'
-    test_dir_npy_minor = test_dir_npy + '/minor'
+    savedir = '/home/revanchist1/Desktop/CSC2506_Project/data/Generated MIDI'
     
-    dirs = [savedir, train_dir, train_dir_mid, train_dir_mid_major,
-            train_dir_mid_minor, train_dir_npy, train_dir_npy_major,
-            train_dir_npy_minor, test_dir, test_dir_mid, test_dir_mid_major, 
-            test_dir_mid_minor, test_dir_npy, test_dir_npy_major, test_dir_npy_minor]
+    major = savedir + '/major'
+    minor = savedir + '/minor'
+    
+    maj_train = major + '/train'
+    maj_train_midi = maj_train + '_midi'
+    maj_test = major + '/test'
+    maj_test_midi = maj_test + '_midi'
+    
+    min_train = minor + '/train'
+    min_train_midi = min_train + '_midi'
+    min_test = minor + '/test'
+    min_test_midi = min_test + '_midi'
+    
+    dirs = [savedir, major, minor, 
+            maj_train, maj_train_midi, maj_test, maj_test_midi, 
+            min_train, min_train_midi, min_test, min_test_midi]
     
     # Use numpy random number generation + seed for reproducible train test split 
     np.random.seed(0)
@@ -900,14 +896,14 @@ if __name__ == '__main__':
     null = [os.mkdir(d) for d in dirs]
     
     GENERATE_SCALES = True             # VERIFIED (8*(52 asc keys +20 desc keys))*7 note lengths = 4,032 files
-    GENERATE_TRIADS = False             # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files
-    GENERATE_SEVENTHS = False           # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files 
-    GENERATE_MEL_1 = False              # VERIFIED (2*(52 asc keys))*7*6 note lenghts = 4368 files  
-    GENERATE_MEL_2 = False              
-    GENERATE_CHORD_PROG_1 = False       
-    GENERATE_CHORD_PROG_2 = False       
-    GENERATE_MEL_TWINKLE = False         
-    GENERATE_MEL_HAPPYBDAY = False       
+    GENERATE_TRIADS = True             # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files
+    GENERATE_SEVENTHS = True           # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files 
+    GENERATE_MEL_1 = True              # VERIFIED (2*(52 asc keys))*7*6 note lenghts = 4368 files  
+    GENERATE_MEL_2 = True              
+    GENERATE_CHORD_PROG_1 = True       
+    GENERATE_CHORD_PROG_2 = True       
+    GENERATE_MEL_TWINKLE = True         
+    GENERATE_MEL_HAPPYBDAY = True       
     
     # Total Expected Number of Files: 28,944 files
     
@@ -929,7 +925,7 @@ if __name__ == '__main__':
            '4th': 1,     
            '2nd': 2,     
            '1st': 4}
-    
+     
     # Combining outer loops for efficiency
     
     num_files_generated = 0

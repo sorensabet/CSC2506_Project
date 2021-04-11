@@ -1,4 +1,4 @@
-name: PLProject
+name: project
 channels:
   - defaults
 dependencies:

@@ -178,12 +178,12 @@ class CycleGAN(object):
                                        dataB[idx * self.batch_size:(idx + 1) * self.batch_size]))
                 
                 batch_samples = [load_npy_data(batch_file) for batch_file in batch_files]
-                                
+                                                
                 batch_samples = np.array(batch_samples).astype(np.float32)  # batch_size * 64 * 84 * 2
                 real_A, real_B = batch_samples[:, :, :, 0], batch_samples[:, :, :, 1]
                 real_A = tf.expand_dims(real_A, -1) # batch_size * 64 * 84 * 1
                 real_B = tf.expand_dims(real_B, -1) # batch_size * 64 * 84 * 1
-
+                
                 # generate gaussian noise for robustness improvement
                 gaussian_noise = np.abs(np.random.normal(0,
                                                          self.sigma_d,
@@ -197,6 +197,7 @@ class CycleGAN(object):
 
                         fake_B = self.generator_A2B(real_A,
                                                     training=True)
+                                                
                         cycle_A = self.generator_B2A(fake_B,
                                                      training=True)
 
@@ -283,19 +284,21 @@ class CycleGAN(object):
                                                     training=True)
                         cycle_B = self.generator_A2B(fake_A,
                                                      training=True)
-
+                                                
                         [fake_A_sample, fake_B_sample] = self.pool([fake_A, fake_B])
+                        
 
                         DA_real = self.discriminator_A(real_A + gaussian_noise,
                                                        training=True)
                         DB_real = self.discriminator_B(real_B + gaussian_noise,
                                                        training=True)
 
+
                         DA_fake = self.discriminator_A(fake_A + gaussian_noise,
                                                        training=True)
                         DB_fake = self.discriminator_B(fake_B + gaussian_noise,
                                                        training=True)
-
+                        
                         DA_fake_sample = self.discriminator_A(fake_A_sample + gaussian_noise,
                                                               training=True)
                         DB_fake_sample = self.discriminator_B(fake_B_sample + gaussian_noise,
