@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from pathlib import Path
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
 
 import pretty_midi
@@ -204,24 +205,26 @@ def makefile(all_notes, savedir=None, filename=None):
         # Therefore, the npy array will have dimensions of (4*16)*128  = 64*128
         # Based on the dimensions of the array, I will pad zeros on the right side until it has 64 steps 
 
-        
         # Save the MIDDI and NPY file to appropriate TRAIN/TEST folder 
         # Assume 80/20 train test split 
         
+        mid_file = filename + '_' + str(s) + '.mid'
+        npy_file = filename + '_' + str(s) + '.npy'
+        
         if (np.random.uniform(0,1) <= 0.8):
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir + '/major/train_midi/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/major/train/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir / 'major/train_midi' / mid_file)
+                np.save(savedir / 'major/train' / npy_file, pianoroll)
             else:    
-                pretty_mid.write(savedir + '/minor/train_midi/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/minor/train/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir / 'minor/train_midi' / mid_file)
+                np.save(savedir / 'minor/train' / npy_file, pianoroll)
         else:
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir + '/major/test_midi/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/major/test/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir / 'major/test_midi' / mid_file)
+                np.save(savedir / 'major/test' / npy_file, pianoroll)
             else:
-                pretty_mid.write(savedir + '/minor/test_midi/' + filename + '_' + str(s) + '.mid')
-                np.save(savedir + '/minor/test/' + filename + '_' + str(s) + '.npy', pianoroll)
+                pretty_mid.write(savedir / 'minor/test_midi' / mid_file)
+                np.save(savedir / 'minor/test' / npy_file, pianoroll)
         return None
 
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
@@ -870,21 +873,23 @@ def gen_sevenths_dec(run, savedir, key, nlk, nl, num_octaves_scale):
 if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
-    savedir = '/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI'
+    savedir = Path('C:/Users/Darth/Desktop/CSC2506_Project/data/Generated MIDI')
+    
+    # Need to convert these paths to work on windows with pathlib. 
     
     
-    major = savedir + '/major'
-    minor = savedir + '/minor'
+    major = savedir / 'major'
+    minor = savedir /  'minor'
     
-    maj_train = major + '/train'
-    maj_train_midi = maj_train + '_midi'
-    maj_test = major + '/test'
-    maj_test_midi = maj_test + '_midi'
+    maj_train = major / 'train'
+    maj_train_midi = major / 'train_midi'
+    maj_test = major / 'test'
+    maj_test_midi = major / 'test_midi'
     
-    min_train = minor + '/train'
-    min_train_midi = min_train + '_midi'
-    min_test = minor + '/test'
-    min_test_midi = min_test + '_midi'
+    min_train = minor / 'train'
+    min_train_midi = minor / 'train_midi'
+    min_test = minor / 'test'
+    min_test_midi = minor / 'test_midi'
     
     dirs = [savedir, major, minor, 
             maj_train, maj_train_midi, maj_test, maj_test_midi, 
@@ -896,7 +901,8 @@ if __name__ == '__main__':
     if (os.path.exists(savedir)):
         shutil.rmtree(savedir)
         print('Cleared directory!')
-    null = [os.mkdir(d) for d in dirs]
+        
+    null = [Path(d).mkdir() for d in dirs]
     
     GENERATE_SCALES = True             # VERIFIED (8 tracks*(52 asc keys +20 desc keys))*6 note lengths = 3,456 files
     GENERATE_TRIADS = True             # VERIFIED (14*(52 asc keys + 20 desc keys))*7 note lengths = 7,056 files
