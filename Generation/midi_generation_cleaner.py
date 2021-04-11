@@ -210,20 +210,21 @@ def makefile(all_notes, savedir=None, filename=None):
         
         mid_file = filename + '_' + str(s) + '.mid'
         npy_file = filename + '_' + str(s) + '.npy'
+
         
         if (np.random.uniform(0,1) <= 0.8):
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir / 'major/train_midi' / mid_file)
+                pretty_mid.write(str(savedir / 'major/train_midi' / mid_file))
                 np.save(savedir / 'major/train' / npy_file, pianoroll)
             else:    
-                pretty_mid.write(savedir / 'minor/train_midi' / mid_file)
+                pretty_mid.write(str(savedir / 'minor/train_midi' / mid_file))
                 np.save(savedir / 'minor/train' / npy_file, pianoroll)
         else:
             if (('major' in filename) or ('dominant' in filename)):
-                pretty_mid.write(savedir / 'major/test_midi' / mid_file)
+                pretty_mid.write(str(savedir / 'major/test_midi' / mid_file))
                 np.save(savedir / 'major/test' / npy_file, pianoroll)
             else:
-                pretty_mid.write(savedir / 'minor/test_midi' / mid_file)
+                pretty_mid.write(str(savedir / 'minor/test_midi' / mid_file))
                 np.save(savedir / 'minor/test' / npy_file, pianoroll)
         return None
 
@@ -873,11 +874,8 @@ def gen_sevenths_dec(run, savedir, key, nlk, nl, num_octaves_scale):
 if __name__ == '__main__':
     # Parameters
     #savedir = '/Users/cnylu/Desktop/PhD/CSC2506/CSC2506_Project/data/Generated MIDI'
-    savedir = Path('C:/Users/Darth/Desktop/CSC2506_Project/data/Generated MIDI')
-    
-    # Need to convert these paths to work on windows with pathlib. 
-    
-    
+    savedir = Path('/Users/sorensabet/Desktop/MSC/CSC2506_Project/data/Generated MIDI/')
+
     major = savedir / 'major'
     minor = savedir /  'minor'
     
