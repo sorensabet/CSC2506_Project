@@ -7,12 +7,166 @@ import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 from mido import Message, MidiFile, MidiTrack, bpm2tempo, tempo2bpm, MetaMessage
+#from write_midi import write_piano_roll_to_midi
 
 import pretty_midi
 import pypianoroll
 import matplotlib.pyplot as plt
 
+pd.options.mode.chained_assignment = None
+
 np.random.seed(0)
+
+def set_piano_roll_to_instrument(piano_roll, instrument, velocity=64, tempo=120.0, beat_resolution=4):
+    # Calculate time per pixel
+    tpp = 60.0 / tempo / float(beat_resolution)      # 0.125 seconds per pixel 
+    threshold = 60.0 / tempo / 4                     # 0.125 (unit unclear)
+    phrase_end_time = (60.0 / tempo) * piano_roll.shape[1] / beat_resolution
+    
+    # Create piano_roll_search that captures note onsets and offsets
+    orig_piano_roll = piano_roll
+    piano_roll = piano_roll.reshape((piano_roll.shape[0] * piano_roll.shape[1], piano_roll.shape[2]))   
+    piano_roll_diff = np.concatenate((np.zeros((1, 128), dtype=int), piano_roll, np.zeros((1, 128), dtype=int)))
+    piano_roll_search = np.diff(piano_roll_diff.astype(int), axis=0)
+    # Iterate through all possible(128) pitches
+
+    for note_num in range(128):
+        #print('Note Num: %d' % note_num)
+        # Search for notes
+        start_idx = (piano_roll_search[:, note_num] > 0).nonzero()
+        start_time = list(tpp * (start_idx[0].astype(float)))
+        # print('start_time:', start_time)
+        # print(len(start_time))
+        end_idx = (piano_roll_search[:, note_num] < 0).nonzero()
+        end_time = list(tpp * (end_idx[0].astype(float)))
+        # print('end_time:', end_time)
+        # print(len(end_time))
+        duration = [pair[1] - pair[0] for pair in zip(start_time, end_time)]
+        # print('duration each note:', duration)
+        # print(len(duration))
+
+        temp_start_time = [i for i in start_time]
+        temp_end_time = [i for i in end_time]
+
+        for i in range(len(start_time)):
+            #print(start_time)
+            if start_time[i] in temp_start_time and i != len(start_time) - 1:
+                # print('i and start_time:', i, start_time[i])
+                t = []
+                current_idx = temp_start_time.index(start_time[i])
+                for j in range(current_idx + 1, len(temp_start_time)):
+                    # print(j, temp_start_time[j])
+                    if temp_start_time[j] < start_time[i] + threshold and temp_end_time[j] <= start_time[i] + threshold:
+                        # print('popped start time:', temp_start_time[j])
+                        t.append(j)
+                        # print('popped temp_start_time:', t)
+                for _ in t:
+                    temp_start_time.pop(t[0])
+                    temp_end_time.pop(t[0])
+                # print('popped temp_start_time:', temp_start_time)
+
+        start_time = temp_start_time
+        # print('After checking, start_time:', start_time)
+        # print(len(start_time))
+        end_time = temp_end_time
+        # print('After checking, end_time:', end_time)
+        # print(len(end_time))
+        duration = [pair[1] - pair[0] for pair in zip(start_time, end_time)]
+        # print('After checking, duration each note:', duration)
+        # print(len(duration))
+
+        if len(end_time) < len(start_time):
+            d = len(start_time) - len(end_time)
+            start_time = start_time[:-d]
+        # Iterate through all the searched notes
+        for idx in range(len(start_time)):
+            if duration[idx] >= threshold:
+                # Create an Note object with corresponding note number, start time and end time
+                note = pretty_midi.Note(velocity=velocity, pitch=note_num, start=start_time[idx], end=end_time[idx])
+                # Add the note to the Instrument object
+                instrument.notes.append(note)
+            else:
+                if start_time[idx] + threshold <= phrase_end_time:
+                    # Create an Note object with corresponding note number, start time and end time
+                    note = pretty_midi.Note(velocity=velocity, pitch=note_num, start=start_time[idx],
+                                            end=start_time[idx] + threshold)
+                else:
+                    # Create an Note object with corresponding note number, start time and end time
+                    note = pretty_midi.Note(velocity=velocity, pitch=note_num, start=start_time[idx],
+                                            end=phrase_end_time)
+                # Add the note to the Instrument object
+                instrument.notes.append(note)
+    # Sort the notes by their start time
+    instrument.notes.sort(key=lambda note: note.start)
+    # print(max([i.end for i in instrument.notes]))
+    # print('tpp, threshold, phrases_end_time:', tpp, threshold, phrase_end_time)
+
+
+def write_piano_roll_to_midi(piano_roll, program_num=0, is_drum=False, velocity=64,
+                             tempo=120.0, beat_resolution=16):
+    # Create a PrettyMIDI object
+    midi = pretty_midi.PrettyMIDI(initial_tempo=tempo)
+    # Create an Instrument object
+    instrument = pretty_midi.Instrument(program=program_num, is_drum=is_drum)
+    # Set the piano roll to the Instrument object
+
+    set_piano_roll_to_instrument(piano_roll, instrument, velocity, tempo, beat_resolution)
+    
+    mido = generate_mido(instrument.notes)
+    
+    # Add the instrument to the PrettyMIDI object
+    #midi.instruments.append(instrument)
+    # Return MIDI file for writing out in other file 
+    return mido, instrument.notes
+
+def generate_mido(notes): 
+    
+    note_dict = []
+    for n in notes: 
+        note_dict.append({'note': n.pitch, 'start(s)': n.start, 'end(s)': n.end, 'velocity': 64})
+    df = pd.DataFrame.from_records(note_dict)
+    
+    dfs = df[['note', 'start(s)']]
+    dfs['type'] = 'note_on'
+    dfs['start_beat'] = dfs['start(s)']*2
+    
+    dfe = df[['note', 'end(s)']]
+    dfe['type'] = 'note_off'
+    dfe['start_beat'] = dfe['end(s)']*2
+    
+    df2 = pd.concat([dfs[['note', 'type', 'start_beat']], dfe[['note', 'type', 'start_beat']]])
+    df2.sort_values(by=['start_beat'], inplace=True)
+    df2['ctime'] = df2['start_beat']*480                                         # Use 480 ticks per beat 
+    df2['time'] = df2['ctime'] - df2['ctime'].shift(1)                            # MIDI commands are sequential, we need to go from cumulative time to time between events
+    df2 = df2.fillna(0)
+    
+    ### USING MIDO TO GENERATE MIDI FILES #### 
+    # Create the track specific MIDI file 
+    mid = MidiFile(ticks_per_beat=480, type=0)
+    midiTrack = MidiTrack()
+    
+    # Tempo MIDI Message (Set to 120 BPM)
+    midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
+
+    # Time Signature MIDI Message (Standardize to 120bpm)
+    midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
+                                  clocks_per_click=24, notated_32nd_notes_per_beat=8))
+
+    # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
+    midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
+       
+    midiTrack += [Message(x[2],  note=int(x[1]), time=int(x[5]), velocity=64, channel=0) for x in df2.itertuples()]
+    
+    # End of Track MIDI Message
+    midiTrack.append(MetaMessage('end_of_track', time=0))
+    
+    # Append Track to MIDI File
+    mid.tracks.append(midiTrack)
+    
+    #mid.save(savedir + '/' + filename + '_' + str(s) + '.mid')
+    # print('Generated MIDO file!')
+    # print(savedir + '/' + filename + '_' + str(s) + '.mid')
+    return mid 
 
 def add_note(note, start_beat, length_in_beats):
     """
@@ -42,7 +196,6 @@ def add_chord(notes, start_beat, length_in_beats, note_type=None):
     return msgs
 
 def makefile(all_notes, savedir=None, filename=None):
-    
     df = pd.DataFrame.from_records(all_notes)                                  # Assemble dataframe from list of dictionaries
     df.sort_values(by=['start_beat'], inplace=True)
     df['bar'] = (df['start_beat']/4).astype(int)
@@ -132,36 +285,9 @@ def makefile(all_notes, savedir=None, filename=None):
     df['velocity'] = np.where(df['type'] == 'note_on', 64, 0)
     
     for s in df['segment'].unique(): 
+        #print(s)
+        
         sdf = df.loc[df['segment'] == s][['type', 'note', 'time', 'velocity', 'start_beat']]
-        
-        
-        #### USING MIDO TO GENERATE MIDI FILES #### 
-        # # Create the track specific MIDI file 
-        # mid = MidiFile(ticks_per_beat=480, type=0)
-        # midiTrack = MidiTrack()
-        
-        # # Tempo MIDI Message (Set to 120 BPM)
-        # midiTrack.append(MetaMessage('set_tempo', time=0, tempo=500000))
-    
-        # # Time Signature MIDI Message (Standardize to 120bpm)
-        # midiTrack.append(MetaMessage('time_signature', time=0, numerator=4, denominator=4, 
-        #                              clocks_per_click=24, notated_32nd_notes_per_beat=8))
-    
-        # # Key Signature MIDI Message (Shouldn't matter since MIDI note number determines the correct note)
-        # midiTrack.append(MetaMessage('key_signature', time=0, key='C'))
-        
-        # # Individual Messages corresponding to notes 
-        # midiTrack += [Message(x[1],  note=int(x[2]), time=int(x[3]), velocity=int(x[4]), channel=0) for x in sdf.itertuples()]
-        
-        # # End of Track MIDI Message
-        # midiTrack.append(MetaMessage('end_of_track', time=0))
-        
-        # # Append Track to MIDI File
-        # mid.tracks.append(midiTrack)
-        
-        # mid.save(savedir + '/' + filename + '_' + str(s) + '.mid')
-        # # print('Generated MIDO file!')
-        # # print(savedir + '/' + filename + '_' + str(s) + '.mid')
 
         
         #### USING PRETTY_MIDI + PYPIANOROLL TO GENERATE MIDI + NPY FILES
@@ -174,12 +300,24 @@ def makefile(all_notes, savedir=None, filename=None):
         sdf_prettymidi['end_time(s)'] = sdf_prettymidi['start_time(s)'] + beat_length*0.5
         sdf_prettymidi['end_time(s)'] = np.where(sdf_prettymidi['end_time(s)'] > 8.0, 8.0, sdf_prettymidi['end_time(s)'])
         
+        sdf_pianoroll = sdf_prettymidi[['note', 'start_time(s)', 'end_time(s)']]
+        sdf_pianoroll['start_timestep'] = (sdf_pianoroll['start_time(s)']*32).astype(int)
+        sdf_pianoroll['end_timestep'] = (sdf_pianoroll['end_time(s)']*32).astype(int)
+        
+        
         # print(s)
         # print(filename)
         # Making a file using pretty_midi instead of MIDO for easier npy file generation 
         pretty_mid = pretty_midi.PrettyMIDI()
         piano = pretty_midi.Instrument(program = 1)
         
+        ### NEW PLAN: Assemble the npy array manually  
+        # 256 timesteps (beat_resolution=16*16 beats) * 128 pitches 
+        pianoroll = np.zeros((256, 128))
+        
+        for tup in sdf_pianoroll.itertuples(): 
+            pianoroll[tup[4]:tup[5], tup[1]] = 1 # Turn the note on for these timesteps 
+                
         for x in sdf_prettymidi.itertuples(): 
             note = pretty_midi.Note(velocity=64, 
                                     pitch=int(x[1]), 
@@ -187,46 +325,37 @@ def makefile(all_notes, savedir=None, filename=None):
                                     end=float(x[4]))
             piano.notes.append(note)
         pretty_mid.instruments.append(piano)
-
         
-        # Convert pretty_midi to pypianoroll to get npy array 
-        multitrack = pypianoroll.from_pretty_midi(pretty_mid)
-        pypianoroll.set_resolution(multitrack, 4) # 16th note resolutions, 4 time clicks per beat
-        multitrack.binarize()       
-        multitrack = pypianoroll.set_resolution(multitrack, 4) # 16th note resolutions, 4 time clicks per beat 
+        # Reconstructing MIDI from pianoroll to compare against original
+        mido_mid_recr, pianoroll_notes = write_piano_roll_to_midi(pianoroll.reshape((1,256,128)), beat_resolution=16)
         
-        # CycleGAN repo said they only pitches between C0 and C8 but they said 84 notes which is C1 (4) to C8 (88)
-        # I kept the whole 128 note range but this can be altered by modifying the 3/87 in the line below: 
-        pianoroll = (multitrack.tracks[0].pianoroll*1)[:,3:87]  
-        pianoroll = np.pad(pianoroll, ((0,64-pianoroll.shape[0]),(0,0))).reshape(64, 84, 1)
-        
-        # The MIDI files are 4 bars, and there is a resolution of 4 timesteps per beat.
-        # Since the MIDI files are 4/4 time, we have a total of 16 beats in the four bars.
-        # Therefore, the npy array will have dimensions of (4*16)*128  = 64*128
-        # Based on the dimensions of the array, I will pad zeros on the right side until it has 64 steps 
-
-        # Save the MIDDI and NPY file to appropriate TRAIN/TEST folder 
-        # Assume 80/20 train test split 
-        
+                
         mid_file = filename + '_' + str(s) + '.mid'
         npy_file = filename + '_' + str(s) + '.npy'
+        mid_file2 = filename + '_' + str(s) + '_npy-MIDI.mid'
 
         
         if (np.random.uniform(0,1) <= 0.8):
             if (('major' in filename) or ('dominant' in filename)):
                 pretty_mid.write(str(savedir / 'major/train_midi' / mid_file))
                 np.save(savedir / 'major/train' / npy_file, pianoroll)
+                mido_mid_recr.save(str(savedir / 'major/train_midi'/ mid_file2))
+
             else:    
                 pretty_mid.write(str(savedir / 'minor/train_midi' / mid_file))
                 np.save(savedir / 'minor/train' / npy_file, pianoroll)
+                mido_mid_recr.save(str(savedir / 'minor/train_midi'/ mid_file2))
+
         else:
             if (('major' in filename) or ('dominant' in filename)):
                 pretty_mid.write(str(savedir / 'major/test_midi' / mid_file))
                 np.save(savedir / 'major/test' / npy_file, pianoroll)
+                mido_mid_recr.save(str(savedir / 'major/test_midi'/ mid_file2))
             else:
                 pretty_mid.write(str(savedir / 'minor/test_midi' / mid_file))
                 np.save(savedir / 'minor/test' / npy_file, pianoroll)
-        return None
+                mido_mid_recr.save(str(savedir / 'minor/test_midi'/ mid_file2))
+    return None
 
 def gen_chord_prog_1(run, savedir, key, nlk, nl): 
     if (run == False):
@@ -881,11 +1010,13 @@ if __name__ == '__main__':
     
     maj_train = major / 'train'
     maj_train_midi = major / 'train_midi'
+    
     maj_test = major / 'test'
     maj_test_midi = major / 'test_midi'
     
     min_train = minor / 'train'
     min_train_midi = minor / 'train_midi'
+    
     min_test = minor / 'test'
     min_test_midi = minor / 'test_midi'
     
@@ -912,7 +1043,6 @@ if __name__ == '__main__':
     GENERATE_MEL_TWINKLE = True         
     GENERATE_MEL_HAPPYBDAY = True       
     
-    
     # Total Expected Number of Files: 28,944 files
     
     # More minors because of harmonic, melodic, and minor 
@@ -926,7 +1056,9 @@ if __name__ == '__main__':
     num_octaves_chord = 4
     num_octaves_sevenths = 4
     key_range = range(21, 73) # Min: 21, Max: 72 (based on setting num_octaves_scale/chord/sevenths=4 and piano size)
+    #key_range = range(72, 73)
     dec_key_range = range(88, 68, -1) # Max: 88, Min: 44 (actually 45 but range ignores last value)
+    #dec_key_range = range(88, 88, -1)
     nls = {'16th': 0.25,  
            '8th': 0.5,   
            'd8th': 0.75,
@@ -935,7 +1067,6 @@ if __name__ == '__main__':
            '1st': 4}
     
     # Combining outer loops for efficiency
-    
     num_files_generated = 0
     for key in tqdm(key_range): 
         print('Key: %d' % key)
